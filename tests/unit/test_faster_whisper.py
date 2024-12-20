@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 
+from fastapi import HTTPException
 import pytest
-from bentoml.exceptions import InvalidArgument, NotFound
+from bentoml.exceptions import InvalidArgument
 
 from api_models.enums import TimestampGranularity, ResponseFormat
 from service import FasterWhisper
@@ -13,7 +14,7 @@ class TestFasterWhisperTranscribe:
     def test_transcribe_standard_case(self):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio.mp3")
+        file = Path("./tests/assets/example_audio.mp3")
 
         # when
         transcription = faster_whisper_service.transcribe(file, response_format=ResponseFormat.JSON)
@@ -29,7 +30,7 @@ class TestFasterWhisperTranscribe:
     def test_transcribe_temperature(self, temperature):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio.mp3")
+        file = Path("./tests/assets/example_audio.mp3")
 
         # when
         transcription = faster_whisper_service.transcribe(file,
@@ -49,7 +50,7 @@ class TestFasterWhisperTranscribe:
     def test_transcribe_response_format(self, response_format, timestamp_granularities):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio.mp3")
+        file = Path("./tests/assets/example_audio.mp3")
 
         # when
         transcription = faster_whisper_service.transcribe(file,
@@ -62,7 +63,7 @@ class TestFasterWhisperTranscribe:
     def test_response_format_verbose_timestamp_granularities_segment(self):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio.mp3")
+        file = Path("./tests/assets/example_audio.mp3")
         response_format = ResponseFormat.VERBOSE_JSON
         timestamp_granularities = [TimestampGranularity.SEGMENT]
 
@@ -75,7 +76,7 @@ class TestFasterWhisperTranscribe:
     def test_response_format_verbose_timestamp_granularities_word(self):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio.mp3")
+        file = Path("./tests/assets/example_audio.mp3")
         response_format = ResponseFormat.VERBOSE_JSON
         timestamp_granularities = [TimestampGranularity.WORD]
 
@@ -91,7 +92,7 @@ class TestFasterWhisperTranscribe:
     async def test_transcribe_streaming(self):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio.mp3")
+        file = Path("./tests/assets/example_audio.mp3")
         chunks = []
 
         # when
@@ -104,7 +105,7 @@ class TestFasterWhisperTranscribe:
     def test_transcribe_task(self):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio.mp3")
+        file = Path("./tests/assets/example_audio.mp3")
 
         # when
         transcription = faster_whisper_service.task_transcribe(file, response_format=ResponseFormat.JSON)
@@ -118,7 +119,7 @@ class TestFasterWhisperTranslate:
     def test_translate_standard_case(self):
         # given
         faster_whisper_service = FasterWhisper()
-        file = Path("../assets/example_audio_german.mp3")
+        file = Path("./tests/assets/example_audio_german.mp3")
 
         # when
         transcription = faster_whisper_service.translate(file, response_format=ResponseFormat.JSON)
@@ -145,5 +146,5 @@ class TestFasterWhisperModels:
         faster_whisper_service = FasterWhisper()
 
         # when / then
-        with pytest.raises(NotFound):
+        with pytest.raises(HTTPException):
             faster_whisper_service.get_model(unknown_model_name)

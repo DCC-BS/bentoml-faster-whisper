@@ -1,10 +1,10 @@
 import enum
-from typing import List
+from typing import Dict, List, Union
 
 import torch
 from pydantic import BaseModel, Field
-
-from api_models.enums import TimestampGranularity, ResponseFormat
+from faster_whisper.vad import VadOptions
+from api_models.enums import ResponseFormat, TimestampGranularity
 
 
 class Device(enum.StrEnum):
@@ -30,7 +30,9 @@ class WhisperModelConfig(BaseModel):
 
     inference_device: Device = Device.CUDA if torch.cuda.is_available() else Device.AUTO
     device_index: int | list[int] = 0
-    compute_type: Quantization = Quantization.FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
+    compute_type: Quantization = (
+        Quantization.FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
+    )
     cpu_threads: int = 0
     num_workers: int = 1
     ttl: int = Field(default=300, ge=-1)
@@ -46,11 +48,41 @@ class FasterWhisperConfig(BaseModel):
     default_prompt: str = None
     default_language: str = None
     default_response_format: ResponseFormat = ResponseFormat.JSON
-    default_temperature: float = 0.0
-    default_timestamp_granularities: List[TimestampGranularity] = [TimestampGranularity.SEGMENT]
+    default_temperature: List[float] = [
+        0.0,
+        0.2,
+        0.4,
+        0.6,
+        0.8,
+        1.0,
+    ]
+    default_timestamp_granularities: List[TimestampGranularity] = [
+        TimestampGranularity.SEGMENT
+    ]
 
     min_temperature: float = 0.0
     max_temperature: float = 2.0
+
+    best_of: int = 10
+    vad_filter: bool = True
+    vad_parameters: Dict[str, Union[float, int]] = {
+        "onset": 0.5,
+        "offset": 0.15,
+        "min_speech_duration_ms": 0,
+        "max_speech_duration_s": 999_999,
+        "min_silence_duration_ms": 2000,
+        "speech_pad_ms": 400
+    }
+    condition_on_previous_text: bool = True
+    repetition_penalty: float = 1.0
+    length_penalty: float = 1.0
+    no_repeat_ngram_size: int = 0
+    hotwords: str = ""
+    beam_size: int = 5
+    patience: float = 1.0
+    compression_ratio_threshold: float = 2.4
+    log_prob_threshold: float = -1.0
+    prompt_reset_on_temperature: float = 0.5
 
 
 faster_whisper_config = FasterWhisperConfig()

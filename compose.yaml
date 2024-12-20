@@ -10,7 +10,6 @@ services:
       tags:
         - "quay.io/ktbs/fd-itbs-dms/faster-whisper:latest"
         - "quay.io/ktbs/fd-itbs-dms/faster-whisper:1.0.0"
-    container_name: faster_whisper
     ports:
       - '9001:50001'
     environment:

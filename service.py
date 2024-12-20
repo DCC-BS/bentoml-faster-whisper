@@ -1,28 +1,37 @@
 import logging
 import os
-from typing import TYPE_CHECKING, Annotated, AsyncGenerator, List, Optional
+import time
+from typing import TYPE_CHECKING, Annotated, Any, AsyncGenerator, List
 
 import bentoml
 import huggingface_hub
-from bentoml.validators import ContentType
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-
+from faster_whisper.vad import VadOptions
+from pydub import AudioSegment
 from api_models.enums import ResponseFormat, Task
-from api_models.input_models import ModelName, ValidatedLanguage, ValidatedResponseFormat, ValidatedTemperature, \
-    TimestampGranularities, BatchTranscriptionRequest, validate_timestamp_granularities, hf_model_info_to_model_object
-from api_models.output_models import segments_to_streaming_response, ModelListResponse, segments_to_response, \
-    ModelObject
-from config import WhisperModelConfig, faster_whisper_config
+from api_models.input_models import (
+    TranscriptionRequest,
+    hf_model_info_to_model_object,
+    validate_timestamp_granularities,
+)
+from api_models.output_models import (
+    ModelListResponse,
+    ModelObject,
+    segments_to_response,
+    segments_to_streaming_response,
+)
+from config import WhisperModelConfig
 from core import Segment
 from logger import configure_logging
 from model_manager import WhisperModelManager
+from prometheus_client import Histogram
 
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo
 
 from pathlib import Path
-from pydantic import Field
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,46 +41,133 @@ configure_logging()
 
 load_dotenv()
 
+
 TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
-
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", 4))
-MAX_LATENCY_MS = int(os.getenv("MAX_LATENCY_MS", 60000))
+MAX_LATENCY_MS = int(os.getenv("MAX_LATENCY_MS", 60 * 1000))
+DURATION_BUCKETS_S = [1., 5., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., float("inf")]
+AUDIO_INPUT_LENGTH_BUCKETS_S = [
+    10.,
+    30.,
+    60.,
+    60. * 2,
+    60. * 5,
+    60. * 7,
+    60. * 10,
+    60. * 20,
+    60. * 30,
+    60. * 60,
+    60. * 60 * 2,
+    float("inf"),
+]
+REALTIME_FACTOR_BUCKETS = [
+    0.5,
+    1.0,
+    3.0,
+    5.0,
+    10.0,
+    20.0,
+    30.0,
+    40.0,
+    50.0,
+    float("inf"),
+]
+
+
+input_audio_length_histogram = Histogram(
+    name="input_audio_length_seconds",
+    documentation="Input audio length in seconds",
+    buckets=AUDIO_INPUT_LENGTH_BUCKETS_S,
+)
+
+realtime_factor_histogram = Histogram(
+    name="realtime_factor",
+    documentation="Realtime factor, e.g. avg. audio seconds transcribed per second",
+    buckets=REALTIME_FACTOR_BUCKETS,
+)
+
+
+def get_audio_duration(file: Path):
+    """Gets the duration of an audio file in seconds."""
+    duration = AudioSegment.from_file(file).duration_seconds
+    return duration
 
 
 class FasterWhisperHandler:
-
     def __init__(self):
         self.model_manager = WhisperModelManager(WhisperModelConfig())
 
-    def transcribe_audio(self,
-                         file,
-                         model,
-                         language,
-                         prompt,
-                         response_format,
-                         temperature,
-                         timestamp_granularities):
+    def transcribe_audio(
+        self,
+        file,
+        model,
+        language,
+        prompt,
+        response_format,
+        temperature,
+        timestamp_granularities,
+        best_of,
+        vad_filter,
+        vad_parameters,
+        condition_on_previous_text,
+        repetition_penalty,
+        length_penalty,
+        no_repeat_ngram_size,
+        hotwords,
+        beam_size,
+        patience,
+        compression_ratio_threshold,
+        log_prob_threshold,
+        prompt_reset_on_temperature,
+    ):
         validate_timestamp_granularities(response_format, timestamp_granularities)
 
-        segments, transcription_info = self.prepare_audio_segments(file, language, model,
-                                                                   prompt, temperature,
-                                                                   timestamp_granularities)
+        segments, transcription_info = self.prepare_audio_segments(
+            file=file,
+            language=language,
+            model=model,
+            prompt=prompt,
+            temperature=temperature,
+            timestamp_granularities=timestamp_granularities,
+            best_of=best_of,
+            vad_filter=vad_filter,
+            vad_parameters=vad_parameters,
+            condition_on_previous_text=condition_on_previous_text,
+            repetition_penalty=repetition_penalty,
+            length_penalty=length_penalty,
+            no_repeat_ngram_size=no_repeat_ngram_size,
+            hotwords=hotwords,
+            beam_size=beam_size,
+            patience=patience,
+            compression_ratio_threshold=compression_ratio_threshold,
+            log_prob_threshold=log_prob_threshold,
+            prompt_reset_on_temperature=prompt_reset_on_temperature,
+        )
+
         return segments_to_response(segments, transcription_info, response_format)
 
-    def prepare_audio_segments(self, file, language, model, prompt, temperature, timestamp_granularities):
-        with self.model_manager.load_model(model) as whisper:
-            segments, transcription_info = whisper.transcribe(
-                file,
-                initial_prompt=prompt,
-                language=language,
-                temperature=temperature,
-                word_timestamps="word" in timestamp_granularities,
-            )
-        segments = Segment.from_faster_whisper_segments(segments)
-        return segments, transcription_info
-
-    def translate_audio(self, file, model, prompt, response_format, temperature):
+    def translate_audio(
+        self,
+        file,
+        model,
+        prompt,
+        response_format,
+        temperature,
+        best_of,
+        vad_filter,
+        vad_parameters,
+        condition_on_previous_text,
+        repetition_penalty,
+        length_penalty,
+        no_repeat_ngram_size,
+        hotwords,
+        beam_size,
+        patience,
+        compression_ratio_threshold,
+        log_prob_threshold,
+        prompt_reset_on_temperature,
+    ):
         with self.model_manager.load_model(model) as whisper:
             segments, transcription_info = whisper.transcribe(
                 file,
@@ -79,43 +175,98 @@ class FasterWhisperHandler:
                 initial_prompt=prompt,
                 temperature=temperature,
                 word_timestamps=response_format == ResponseFormat.VERBOSE_JSON,
+                best_of=best_of,
+                hotwords=hotwords,
+                vad_filter=vad_filter,
+                vad_parameters=vad_parameters,
+                condition_on_previous_text=condition_on_previous_text,
+                beam_size=beam_size,
+                patience=patience,
+                repetition_penalty=repetition_penalty,
+                length_penalty=length_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+                compression_ratio_threshold=compression_ratio_threshold,
+                log_prob_threshold=log_prob_threshold,
+                prompt_reset_on_temperature=prompt_reset_on_temperature,
             )
         segments = Segment.from_faster_whisper_segments(segments)
         return segments_to_response(segments, transcription_info, response_format)
 
+    def prepare_audio_segments(
+        self,
+        file,
+        language,
+        model,
+        prompt,
+        temperature,
+        timestamp_granularities,
+        best_of,
+        vad_filter,
+        vad_parameters,
+        condition_on_previous_text,
+        repetition_penalty,
+        length_penalty,
+        no_repeat_ngram_size,
+        hotwords,
+        beam_size,
+        patience,
+        compression_ratio_threshold,
+        log_prob_threshold,
+        prompt_reset_on_temperature,
+    ):
+        with self.model_manager.load_model(model) as whisper:
+            segments, transcription_info = whisper.transcribe(
+                file,
+                initial_prompt=prompt,
+                language=language,
+                temperature=temperature,
+                word_timestamps="word" in timestamp_granularities,
+                best_of=best_of,
+                hotwords=hotwords,
+                vad_filter=vad_filter,
+                vad_parameters=vad_parameters,
+                condition_on_previous_text=condition_on_previous_text,
+                beam_size=beam_size,
+                patience=patience,
+                repetition_penalty=repetition_penalty,
+                length_penalty=length_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+                compression_ratio_threshold=compression_ratio_threshold,
+                log_prob_threshold=log_prob_threshold,
+                prompt_reset_on_temperature=prompt_reset_on_temperature,
+            )
+        segments = Segment.from_faster_whisper_segments(segments)
+        return segments, transcription_info
 
-@bentoml.service(
-    traffic={
-        "timeout": TIMEOUT
-    }
-)
+
+@bentoml.service(traffic={"timeout": TIMEOUT})
 class BatchFasterWhisper:
-
     def __init__(self):
         self.handler = FasterWhisperHandler()
 
     @bentoml.api(
-        batchable=True,
-        max_batch_size=MAX_BATCH_SIZE,
-        max_latency_ms=MAX_LATENCY_MS
+        batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS
     )
-    async def batch_transcribe(self, requests: List[BatchTranscriptionRequest]) -> List[str]:
+    async def batch_transcribe(self, requests: List[TranscriptionRequest]) -> List[str]:
         logger.debug(f"number of requests processed: {len(requests)}")
-        return [self.handler.transcribe_audio(request.file,
-                                              request.model,
-                                              request.language,
-                                              request.prompt,
-                                              request.response_format,
-                                              request.temperature,
-                                              request.timestamp_granularities)
-                for request in requests]
+        return [self.handler.transcribe_audio() for request in requests]
 
 
 @bentoml.service(
+    title="Faster Whisper API",
+    description="This is a custom Faster Whisper API that is fully compatible with the OpenAI SDK and offers aditional options.",
+    version="1.0.0",
     traffic={
         "timeout": TIMEOUT,
         "max_concurrency": MAX_CONCURRENCY,
+    },
+    metrics={
+    "enabled": True,
+    "namespace": "bentoml_service",
+    "duration": {
+        "buckets": DURATION_BUCKETS_S
     }
+}
 )
 @bentoml.mount_asgi_app(fastapi, path="/v1")
 class FasterWhisper:
@@ -124,193 +275,91 @@ class FasterWhisper:
     def __init__(self):
         self.handler = FasterWhisperHandler()
 
-    @bentoml.api(route="/v1/audio/transcriptions")
+    @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)
     def transcribe(
-            self,
-            file: Annotated[Path, ContentType("audio/mpeg")],
-            model: Optional[ModelName] = Field(
-                default=faster_whisper_config.default_model_name,
-                description="Whisper model to load"
-            ),
-            language: Optional[ValidatedLanguage] = Field(
-                default=faster_whisper_config.default_language,
-                description='The language spoken in the audio. It should be a language code such as "en" or "fr". If '
-                            'not set, the language will be detected in the first 30 seconds of audio.'
-            ),
-            prompt: Optional[str] = Field(
-                default=faster_whisper_config.default_prompt,
-                description="Optional text string or iterable of token ids to provide as a prompt for the first window.",
-            ),
-            response_format: Optional[ValidatedResponseFormat] = Field(
-                default=faster_whisper_config.default_response_format,
-                description="The format of the output, in one of these options: `json`, `text`, `srt`, `verbose_json`, "
-                            "or `vtt`.",
-            ),
-            temperature: Optional[ValidatedTemperature] = Field(
-                default=faster_whisper_config.default_temperature,
-                description="Temperature value, which can either be a single float or a list of floats. "
-                            f"Valid Range: Between {faster_whisper_config.min_temperature} and "
-                            f"{faster_whisper_config.max_temperature}",
-            ),
-            timestamp_granularities: Optional[TimestampGranularities] = Field(
-                default=faster_whisper_config.default_timestamp_granularities,
-                alias="timestamp_granularities[]",
-                description="The timestamp granularities to populate for this transcription. response_format must be "
-                            "set verbose_json to use timestamp granularities."
-            )
+        self, **params: Any
     ) -> (
-            Annotated[str, bentoml.validators.ContentType("text/plain")]
-            | Annotated[str, bentoml.validators.ContentType("application/json")]
-            | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-            | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
+        Annotated[str, bentoml.validators.ContentType("text/plain")]
+        | Annotated[str, bentoml.validators.ContentType("application/json")]
+        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
+        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
     ):
-        return self.handler.transcribe_audio(file,
-                                             model,
-                                             language,
-                                             prompt,
-                                             response_format,
-                                             temperature,
-                                             timestamp_granularities)
+        start_time = time.time()
+        vad_parameters = params["vad_parameters"]
+        if isinstance(vad_parameters, dict):
+            vad_parameters = VadOptions(**vad_parameters)
+        vad_parameters.max_speech_duration_s = (
+            float("inf")
+            if vad_parameters.max_speech_duration_s == 999_999
+            else vad_parameters.max_speech_duration_s
+        )
+        params["vad_parameters"] = vad_parameters
+        result = self.handler.transcribe_audio(**params)
+        end_time = time.time()
+        duration = end_time - start_time
+        audio_file = params["file"]
+        audio_duration = get_audio_duration(audio_file)
+        input_audio_length_histogram.observe(audio_duration)
+        realtime_factor_histogram.observe(audio_duration / duration)
+        return result
 
-    @bentoml.api(route="/v1/audio/transcriptions/batch")
+    @bentoml.api(
+        route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest
+    )
     async def batch_transcribe(
-            self,
-            file: Annotated[Path, ContentType("audio/mpeg")],
-            model: Optional[ModelName] = Field(
-                default=faster_whisper_config.default_model_name,
-                description="Whisper model to load"
-            ),
-            language: Optional[ValidatedLanguage] = Field(
-                default=faster_whisper_config.default_language,
-                description='The language spoken in the audio. It should be a language code such as "en" or "fr". If '
-                            'not set, the language will be detected in the first 30 seconds of audio.'
-            ),
-            prompt: Optional[str] = Field(
-                default=faster_whisper_config.default_prompt,
-                description="Optional text string or iterable of token ids to provide as a prompt for the first window.",
-            ),
-            response_format: Optional[ValidatedResponseFormat] = Field(
-                default=faster_whisper_config.default_response_format,
-                description="The format of the output, in one of these options: `json`, `text`, `srt`, `verbose_json`, "
-                            "or `vtt`.",
-            ),
-            temperature: Optional[ValidatedTemperature] = Field(
-                default=faster_whisper_config.default_temperature,
-                description="Temperature value, which can either be a single float or a list of floats. "
-                            f"Valid Range: Between {faster_whisper_config.min_temperature} and "
-                            f"{faster_whisper_config.max_temperature}",
-            ),
-            timestamp_granularities: Optional[TimestampGranularities] = Field(
-                default=faster_whisper_config.default_timestamp_granularities,
-                alias="timestamp_granularities[]",
-                description="The timestamp granularities to populate for this transcription. response_format must be "
-                            "set verbose_json to use timestamp granularities."
-            )
+        self, **params: Any
     ) -> (
-            Annotated[str, bentoml.validators.ContentType("text/plain")]
-            | Annotated[str, bentoml.validators.ContentType("application/json")]
-            | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-            | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
+        Annotated[str, bentoml.validators.ContentType("text/plain")]
+        | Annotated[str, bentoml.validators.ContentType("application/json")]
+        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
+        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
     ):
-        request = BatchTranscriptionRequest(file=file,
-                                            model=model,
-                                            language=language,
-                                            prompt=prompt,
-                                            response_format=response_format,
-                                            temperature=temperature,
-                                            timestamp_granularities=timestamp_granularities)
+        request = TranscriptionRequest(**params)
         result = await self.batch.batch_transcribe([request])
         return result[0]
 
     @bentoml.task(
-        route="/v1/audio/transcriptions/task")
+        route="/v1/audio/transcriptions/task",
+        input_spec=TranscriptionRequest,
+    )
     def task_transcribe(
-            self,
-            file: Annotated[Path, ContentType("audio/mpeg")],
-            model: Optional[ModelName] = Field(
-                default=faster_whisper_config.default_model_name,
-                description="Whisper model to load"
-            ),
-            language: Optional[ValidatedLanguage] = Field(
-                default=faster_whisper_config.default_language,
-                description='The language spoken in the audio. It should be a language code such as "en" or "fr". If '
-                            'not set, the language will be detected in the first 30 seconds of audio.'
-            ),
-            prompt: Optional[str] = Field(
-                default=faster_whisper_config.default_prompt,
-                description="Optional text string or iterable of token ids to provide as a prompt for the first window.",
-            ),
-            response_format: Optional[ValidatedResponseFormat] = Field(
-                default=faster_whisper_config.default_response_format,
-                description="The format of the output, in one of these options: `json`, `text`, `srt`, `verbose_json`, "
-                            "or `vtt`.",
-            ),
-            temperature: Optional[ValidatedTemperature] = Field(
-                default=faster_whisper_config.default_temperature,
-                description="Temperature value, which can either be a single float or a list of floats. "
-                            f"Valid Range: Between {faster_whisper_config.min_temperature} and "
-                            f"{faster_whisper_config.max_temperature}",
-            ),
-            timestamp_granularities: Optional[TimestampGranularities] = Field(
-                default=faster_whisper_config.default_timestamp_granularities,
-                alias="timestamp_granularities[]",
-                description="The timestamp granularities to populate for this transcription. response_format must be "
-                            "set verbose_json to use timestamp granularities."
-            )
+        self, **params: Any
     ) -> (
-            Annotated[str, bentoml.validators.ContentType("text/plain")]
-            | Annotated[str, bentoml.validators.ContentType("application/json")]
-            | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-            | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
+        Annotated[str, bentoml.validators.ContentType("text/plain")]
+        | Annotated[str, bentoml.validators.ContentType("application/json")]
+        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
+        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
     ):
-        return self.handler.transcribe_audio(file,
-                                             model,
-                                             language,
-                                             prompt,
-                                             response_format,
-                                             temperature,
-                                             timestamp_granularities)
+        vad_parameters = params["vad_parameters"]
+        if isinstance(vad_parameters, dict):
+            vad_parameters = VadOptions(**vad_parameters)
+        vad_parameters.max_speech_duration_s = (
+            float("inf")
+            if vad_parameters.max_speech_duration_s == 999_999
+            else vad_parameters.max_speech_duration_s
+        )
+        params["vad_parameters"] = vad_parameters
 
-    @bentoml.api(route="/v1/audio/transcriptions/stream")
-    async def streaming_transcribe(
-            self,
-            file: Annotated[Path, ContentType("audio/mpeg")],
-            model: Optional[ModelName] = Field(
-                default=faster_whisper_config.default_model_name,
-                description="Whisper model to load"
-            ),
-            language: Optional[ValidatedLanguage] = Field(
-                default=faster_whisper_config.default_language,
-                description='The language spoken in the audio. It should be a language code such as "en" or "fr". If '
-                            'not set, the language will be detected in the first 30 seconds of audio.'
-            ),
-            prompt: Optional[str] = Field(
-                default=faster_whisper_config.default_prompt,
-                description="Optional text string or iterable of token ids to provide as a prompt for the first window.",
-            ),
-            response_format: Optional[ValidatedResponseFormat] = Field(
-                default=faster_whisper_config.default_response_format,
-                description="The format of the output, in one of these options: `json`, `text`, `srt`, `verbose_json`, "
-                            "or `vtt`.",
-            ),
-            temperature: Optional[ValidatedTemperature] = Field(
-                default=faster_whisper_config.default_temperature,
-                description="Temperature value, which can either be a single float or a list of floats. "
-                            f"Valid Range: Between {faster_whisper_config.min_temperature} and "
-                            f"{faster_whisper_config.max_temperature}",
-            ),
-            timestamp_granularities: Optional[TimestampGranularities] = Field(
-                default=faster_whisper_config.default_timestamp_granularities,
-                alias="timestamp_granularities[]",
-                description="The timestamp granularities to populate for this transcription. response_format must be "
-                            "set verbose_json to use timestamp granularities."
-            )
-    ) -> AsyncGenerator[str, None]:
+        return self.handler.transcribe_audio(**params)
 
+    @bentoml.api(
+        route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest
+    )
+    async def streaming_transcribe(self, **params: Any) -> AsyncGenerator[str, None]:
+        vad_parameters = params["vad_parameters"]
+        if isinstance(vad_parameters, dict):
+            vad_parameters = VadOptions(**vad_parameters)
+        vad_parameters.max_speech_duration_s = (
+            float("inf")
+            if vad_parameters.max_speech_duration_s == 999_999
+            else vad_parameters.max_speech_duration_s
+        )
+        params["vad_parameters"] = vad_parameters
+        response_format = params.pop("response_format")
+        timestamp_granularities = params["timestamp_granularities"]
         validate_timestamp_granularities(response_format, timestamp_granularities)
 
-        segments, transcription_info = self.handler.prepare_audio_segments(file, language, model, prompt, temperature,
-                                                                           timestamp_granularities)
+        segments, transcription_info = self.handler.prepare_audio_segments(**params)
         generator = segments_to_streaming_response(
             segments, transcription_info, response_format
         )
@@ -318,35 +367,33 @@ class FasterWhisper:
         for chunk in generator:
             yield chunk
 
-    @bentoml.api(route="/v1/audio/translations")
+    @bentoml.api(route="/v1/audio/translations", input_spec=TranscriptionRequest)
     def translate(
-            self,
-            file: Annotated[Path, ContentType("audio/mpeg")],
-            model: Optional[ModelName] = Field(
-                default="large-v3", description="Whisper model to load"
-            ),
-            prompt: Optional[str] = Field(
-                default=faster_whisper_config.default_prompt,
-                description="An optional text to guide the model's style or continue a previous audio segment. The "
-                            "prompt should be in English.",
-            ),
-            response_format: Optional[ValidatedResponseFormat] = Field(
-                default=faster_whisper_config.default_response_format,
-                description=f"One of: {[format for format in ResponseFormat]}",
-            ),
-            temperature: Optional[ValidatedTemperature] = Field(
-                default=faster_whisper_config.default_temperature,
-                description="Temperature value, which can either be a single float or a list of floats. "
-                            f"Valid Range: Between {faster_whisper_config.min_temperature} and "
-                            f"{faster_whisper_config.max_temperature}",
-            )
+        self, **params: Any
     ) -> (
-            Annotated[str, bentoml.validators.ContentType("text/plain")]
-            | Annotated[str, bentoml.validators.ContentType("application/json")]
-            | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-            | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
+        Annotated[str, bentoml.validators.ContentType("text/plain")]
+        | Annotated[str, bentoml.validators.ContentType("application/json")]
+        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
+        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
     ):
-        return self.handler.translate_audio(file, model, prompt, response_format, temperature)
+        start_time = time.time()
+        vad_parameters = params["vad_parameters"]
+        if isinstance(vad_parameters, dict):
+            vad_parameters = VadOptions(**vad_parameters)
+        vad_parameters.max_speech_duration_s = (
+            float("inf")
+            if vad_parameters.max_speech_duration_s == 999_999
+            else vad_parameters.max_speech_duration_s
+        )
+        params["vad_parameters"] = vad_parameters
+        result = self.handler.translate_audio(**params)
+        end_time = time.time()
+        duration = end_time - start_time
+        audio_file = params["file"]
+        audio_duration = get_audio_duration(audio_file)
+        input_audio_length_histogram.observe(audio_duration)
+        realtime_factor_histogram.observe(audio_duration / duration)
+        return result
 
     @fastapi.get("/models")
     def get_models(self) -> ModelListResponse:
@@ -359,8 +406,12 @@ class FasterWhisper:
         return ModelListResponse(data=transformed_models)
 
     @fastapi.get("/models/{model_name:path}")
-    def get_model(self,
-                  model_name=Annotated[str, Path(example="Systran/faster-distil-whisper-large-v3")]) -> ModelObject:
+    def get_model(
+        self,
+        model_name=Annotated[
+            str, Path(example="Systran/faster-distil-whisper-large-v3")
+        ],
+    ) -> ModelObject:
         models = huggingface_hub.list_models(
             model_name=model_name,
             library="ctranslate2",
