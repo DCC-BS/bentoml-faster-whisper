@@ -7,16 +7,17 @@
 
 ## Prerequisites
 
-If you want to test the project locally, install FFmpeg on your system.
+- If you want to test the project locally, install FFmpeg on your system.
+- Install the package manager uv ([docs](https://docs.astral.sh/uv/getting-started/installation/)).
+- Python 3.12 is recommended.
 
 ## Install dependencies
 
 ```bash
-git clone https://github.com/FD-ITBS-DMS/whisper-bentoml
-cd whisper-bentoml
+git clone https://github.com/DCC-BS/bentoml-faster-whisper.git
+cd bentoml-faster-whisper
 
-# Recommend Python 3.12
-pip install -r requirements.txt
+uv sync
 ```
 
 ## Run the BentoML Service
@@ -58,15 +59,22 @@ python launch.py
 
 ## Deploy
 
-For custom deployment in your own infrastructure, first build and containerize the faster_whisper service.
+### Build an Image
+
+For custom deployment in your own infrastructure, you can build and containerize the faster_whisper service.
 ```bash
-bentoml build
-bentoml containerize faster_whisper:latest
+docker build -t faster_whisper:latest .
 ```
 
-The docker image can be run locally with:
+### Run Container
+You can run the prebuilt docker image with the following command:
 ```bash
 docker run -p 3000:3000 faster_whisper:<IMAGE-TAG>
+```
+
+You can use the compose.yaml file to build an image and run the container:
+```bash
+docker-compose up --build
 ```
 
 Documentation: [BentoML to generate an OCI-compliant image](https://docs.bentoml.com/en/latest/guides/containerization.html)
