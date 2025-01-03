@@ -8,8 +8,8 @@ services:
         - linux/amd64
         - linux/arm64
       tags:
-      - "quay.io/ktbs/fd-itbs-dms/faster-whisper:latest"
-      - "quay.io/ktbs/fd-itbs-dms/faster-whisper:1.0.0"
+        - "quay.io/ktbs/fd-itbs-dms/faster-whisper:latest"
+        - "quay.io/ktbs/fd-itbs-dms/faster-whisper:1.0.0"
     ports:
       - '9001:50001'
     environment:
@@ -24,6 +24,7 @@ services:
     deploy:
       resources:
         reservations:
+          memory: 16g
           devices:
             - driver: nvidia
               device_ids: [ '1' ]
