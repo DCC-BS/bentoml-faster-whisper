@@ -2,14 +2,14 @@ services:
   faster_whisper:
     restart: unless-stopped
     build:
-        context: .
-        dockerfile: Dockerfile
-        platforms:
-            - linux/amd64
-            - linux/arm64
-        tags:
-            - "quay.io/ktbs/fd-itbs-dms/faster-whisper:latest"
-            - "quay.io/ktbs/fd-itbs-dms/faster-whisper:1.0.0"
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+      tags:
+        - "quay.io/ktbs/fd-itbs-dms/faster-whisper:latest"
+        - "quay.io/ktbs/fd-itbs-dms/faster-whisper:1.0.0"
     container_name: faster_whisper
     ports:
       - '9001:50001'
