@@ -12,6 +12,7 @@ from pydub import AudioSegment
 from api_models.enums import ResponseFormat, Task
 from api_models.input_models import (
     TranscriptionRequest,
+    TranslationRequest,
     hf_model_info_to_model_object,
     validate_timestamp_granularities,
 )
@@ -367,7 +368,7 @@ class FasterWhisper:
         for chunk in generator:
             yield chunk
 
-    @bentoml.api(route="/v1/audio/translations", input_spec=TranscriptionRequest)
+    @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)
     def translate(
         self, **params: Any
     ) -> (
