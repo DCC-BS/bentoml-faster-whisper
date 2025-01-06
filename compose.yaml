@@ -24,6 +24,7 @@ services:
     deploy:
       resources:
         reservations:
+          memory: 16g
           devices:
             - driver: nvidia
               device_ids: [ '1' ]
