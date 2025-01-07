@@ -19,6 +19,10 @@ services:
       - HTTPS_PROXY
       - no_proxy
       - NO_PROXY
+      - TIMEOUT
+      - MAX_CONCURRENCY
+      - MAX_BATCH_SIZE
+      - MAX_LATENCY_MS
     volumes:
       - hugging_face_cache:/root/.cache/huggingface
     deploy:
