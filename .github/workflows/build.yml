@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  packages: write
+
+jobs:
+  docker-build:
+    uses: FD-ITBS/reusable-workflows/.github/workflows/docker-build.yml@main
+    with:
+      ghcr-enabled: false
+      quay-enabled: true
+      quay-organization: ktbs
+      quay-team: fd-itbs-dms
+      image-name: "faster-whisper"
+      vulnerability-scan: false
+      push: false
+

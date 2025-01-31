@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  packages: write
+
+jobs:
+  regular:
+    uses: FD-ITBS/reusable-workflows/.github/workflows/docker-build.yml@main
+    with:
+      ghcr-enabled: false
+      quay-enabled: true
+      quay-organization: ktbs
+      quay-team: fd-itbs-dms
+      image-name: faster-whisper
+      sha-tag: false
+      vulnerability-scan: false
+      push: ${{ contains(github.ref, 'tags/v') }}
+    secrets:
+      QUAY_CONTAINER_REGISTRY_USER: ${{ secrets.QUAY_DMS_CONTAINER_REGISTRY_USER }}
+      QUAY_CONTAINER_REGISTRY_PASSWORD : ${{ secrets.QUAY_DMS_CONTAINER_REGISTRY_PASSWORD }}
