@@ -18,7 +18,7 @@ jobs:
       ghcr-enabled: false
       quay-enabled: true
       quay-organization: ktbs
-      quay-team: fd-itbs-dms
+      quay-team: fd-itbs
       image-name: "faster-whisper"
       vulnerability-scan: false
       push: false
