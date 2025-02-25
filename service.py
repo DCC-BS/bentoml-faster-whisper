@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, AsyncGenerator, List
 
 import bentoml
@@ -8,10 +9,7 @@ import huggingface_hub
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from faster_whisper.vad import VadOptions
-from prometheus_client import Histogram
-from pydub import AudioSegment
 
-from api_models.enums import ResponseFormat, Task
 from api_models.input_models import (
     TranscriptionRequest,
     TranslationRequest,
@@ -21,20 +19,18 @@ from api_models.input_models import (
 from api_models.output_models import (
     ModelListResponse,
     ModelObject,
-    segments_to_response,
     segments_to_streaming_response,
 )
-from config import WhisperModelConfig
-from core import Segment
-from diarization_service import DiarizationService
+from handlers.fast_whipser_handler import FasterWhisperHandler
 from logger import configure_logging
-from model_manager import WhisperModelManager
-from whiper_diarization_merger import merge_whipser_diarization
+from utils import (
+    get_audio_duration,
+    input_audio_length_histogram,
+    realtime_factor_histogram,
+)
 
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo
-
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +39,6 @@ fastapi = FastAPI()
 configure_logging()
 
 load_dotenv()
-
 
 TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
@@ -64,207 +59,6 @@ DURATION_BUCKETS_S = [
     100.0,
     float("inf"),
 ]
-AUDIO_INPUT_LENGTH_BUCKETS_S = [
-    10.0,
-    30.0,
-    60.0,
-    60.0 * 2,
-    60.0 * 5,
-    60.0 * 7,
-    60.0 * 10,
-    60.0 * 20,
-    60.0 * 30,
-    60.0 * 60,
-    60.0 * 60 * 2,
-    float("inf"),
-]
-REALTIME_FACTOR_BUCKETS = [
-    0.5,
-    1.0,
-    3.0,
-    5.0,
-    10.0,
-    20.0,
-    30.0,
-    40.0,
-    50.0,
-    float("inf"),
-]
-
-
-input_audio_length_histogram = Histogram(
-    name="input_audio_length_seconds",
-    documentation="Input audio length in seconds",
-    buckets=AUDIO_INPUT_LENGTH_BUCKETS_S,
-)
-
-realtime_factor_histogram = Histogram(
-    name="realtime_factor",
-    documentation="Realtime factor, e.g. avg. audio seconds transcribed per second",
-    buckets=REALTIME_FACTOR_BUCKETS,
-)
-
-
-def get_audio_duration(file: Path):
-    """Gets the duration of an audio file in seconds."""
-    duration = AudioSegment.from_file(file).duration_seconds
-    return duration
-
-
-class FasterWhisperHandler:
-    def __init__(self):
-        self.model_manager = WhisperModelManager(WhisperModelConfig())
-        self.diarization = DiarizationService()
-        self.diarization.load()
-
-    def transcribe_audio(
-        self,
-        file,
-        model,
-        language,
-        prompt,
-        response_format,
-        temperature,
-        timestamp_granularities,
-        best_of,
-        vad_filter,
-        vad_parameters,
-        condition_on_previous_text,
-        repetition_penalty,
-        length_penalty,
-        no_repeat_ngram_size,
-        hotwords,
-        beam_size,
-        patience,
-        compression_ratio_threshold,
-        log_prob_threshold,
-        prompt_reset_on_temperature,
-        diarization: bool | None,
-        diarization_speaker_count: int | None,
-    ):
-        validate_timestamp_granularities(
-            response_format, timestamp_granularities, diarization
-        )
-
-        segments, transcription_info = self.prepare_audio_segments(
-            file=file,
-            language=language,
-            model=model,
-            prompt=prompt,
-            temperature=temperature,
-            timestamp_granularities=timestamp_granularities,
-            best_of=best_of,
-            vad_filter=vad_filter,
-            vad_parameters=vad_parameters,
-            condition_on_previous_text=condition_on_previous_text,
-            repetition_penalty=repetition_penalty,
-            length_penalty=length_penalty,
-            no_repeat_ngram_size=no_repeat_ngram_size,
-            hotwords=hotwords,
-            beam_size=beam_size,
-            patience=patience,
-            compression_ratio_threshold=compression_ratio_threshold,
-            log_prob_threshold=log_prob_threshold,
-            prompt_reset_on_temperature=prompt_reset_on_temperature,
-        )
-
-        if diarization:
-            dia_segments = self.diarization.diarize(file, diarization_speaker_count)
-            segments = merge_whipser_diarization(segments, dia_segments)
-
-        return segments_to_response(segments, transcription_info, response_format)
-
-    def translate_audio(
-        self,
-        file,
-        model,
-        prompt,
-        response_format,
-        temperature,
-        best_of,
-        vad_filter,
-        vad_parameters,
-        condition_on_previous_text,
-        repetition_penalty,
-        length_penalty,
-        no_repeat_ngram_size,
-        hotwords,
-        beam_size,
-        patience,
-        compression_ratio_threshold,
-        log_prob_threshold,
-        prompt_reset_on_temperature,
-    ):
-        with self.model_manager.load_model(model) as whisper:
-            segments, transcription_info = whisper.transcribe(
-                file,
-                task=Task.TRANSLATE,
-                initial_prompt=prompt,
-                temperature=temperature,
-                word_timestamps=response_format == ResponseFormat.VERBOSE_JSON,
-                best_of=best_of,
-                hotwords=hotwords,
-                vad_filter=vad_filter,
-                vad_parameters=vad_parameters,
-                condition_on_previous_text=condition_on_previous_text,
-                beam_size=beam_size,
-                patience=patience,
-                repetition_penalty=repetition_penalty,
-                length_penalty=length_penalty,
-                no_repeat_ngram_size=no_repeat_ngram_size,
-                compression_ratio_threshold=compression_ratio_threshold,
-                log_prob_threshold=log_prob_threshold,
-                prompt_reset_on_temperature=prompt_reset_on_temperature,
-            )
-        segments = Segment.from_faster_whisper_segments(segments)
-        return segments_to_response(segments, transcription_info, response_format)
-
-    def prepare_audio_segments(
-        self,
-        file,
-        language,
-        model,
-        prompt,
-        temperature,
-        timestamp_granularities,
-        best_of,
-        vad_filter,
-        vad_parameters,
-        condition_on_previous_text,
-        repetition_penalty,
-        length_penalty,
-        no_repeat_ngram_size,
-        hotwords,
-        beam_size,
-        patience,
-        compression_ratio_threshold,
-        log_prob_threshold,
-        prompt_reset_on_temperature,
-    ):
-        with self.model_manager.load_model(model) as whisper:
-            segments, transcription_info = whisper.transcribe(
-                file,
-                initial_prompt=prompt,
-                language=language,
-                temperature=temperature,
-                word_timestamps="word" in timestamp_granularities,
-                best_of=best_of,
-                hotwords=hotwords,
-                vad_filter=vad_filter,
-                vad_parameters=vad_parameters,
-                condition_on_previous_text=condition_on_previous_text,
-                beam_size=beam_size,
-                patience=patience,
-                repetition_penalty=repetition_penalty,
-                length_penalty=length_penalty,
-                no_repeat_ngram_size=no_repeat_ngram_size,
-                compression_ratio_threshold=compression_ratio_threshold,
-                log_prob_threshold=log_prob_threshold,
-                prompt_reset_on_temperature=prompt_reset_on_temperature,
-            )
-        segments = Segment.from_faster_whisper_segments(segments)
-
-        return segments, transcription_info
 
 
 @bentoml.service(traffic={"timeout": TIMEOUT})
@@ -282,7 +76,7 @@ class BatchFasterWhisper:
 
 @bentoml.service(
     title="Faster Whisper API",
-    description="This is a custom Faster Whisper API that is fully compatible with the OpenAI SDK and offers aditional options.",
+    description="This is a custom Faster Whisper API that is fully compatible with the OpenAI SDK and offers additional options.",
     version="1.0.0",
     traffic={
         "timeout": TIMEOUT,
