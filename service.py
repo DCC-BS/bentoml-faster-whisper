@@ -24,9 +24,11 @@ from api_models.output_models import (
 )
 from config import WhisperModelConfig
 from core import Segment
+from diarization_service import DiarizationService
 from logger import configure_logging
 from model_manager import WhisperModelManager
 from prometheus_client import Histogram
+from whiper_diarization_merger import merge_whipser_diarization
 
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo
@@ -47,19 +49,33 @@ TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", 4))
 MAX_LATENCY_MS = int(os.getenv("MAX_LATENCY_MS", 60 * 1000))
-DURATION_BUCKETS_S = [1., 5., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., float("inf")]
+DURATION_BUCKETS_S = [
+    1.0,
+    5.0,
+    10.0,
+    20.0,
+    30.0,
+    40.0,
+    50.0,
+    60.0,
+    70.0,
+    80.0,
+    90.0,
+    100.0,
+    float("inf"),
+]
 AUDIO_INPUT_LENGTH_BUCKETS_S = [
-    10.,
-    30.,
-    60.,
-    60. * 2,
-    60. * 5,
-    60. * 7,
-    60. * 10,
-    60. * 20,
-    60. * 30,
-    60. * 60,
-    60. * 60 * 2,
+    10.0,
+    30.0,
+    60.0,
+    60.0 * 2,
+    60.0 * 5,
+    60.0 * 7,
+    60.0 * 10,
+    60.0 * 20,
+    60.0 * 30,
+    60.0 * 60,
+    60.0 * 60 * 2,
     float("inf"),
 ]
 REALTIME_FACTOR_BUCKETS = [
@@ -98,6 +114,8 @@ def get_audio_duration(file: Path):
 class FasterWhisperHandler:
     def __init__(self):
         self.model_manager = WhisperModelManager(WhisperModelConfig())
+        self.diarization = DiarizationService()
+        self.diarization.load()
 
     def transcribe_audio(
         self,
@@ -121,8 +139,12 @@ class FasterWhisperHandler:
         compression_ratio_threshold,
         log_prob_threshold,
         prompt_reset_on_temperature,
+        diarization: bool | None,
+        diarization_speaker_count: int | None,
     ):
-        validate_timestamp_granularities(response_format, timestamp_granularities)
+        validate_timestamp_granularities(
+            response_format, timestamp_granularities, diarization
+        )
 
         segments, transcription_info = self.prepare_audio_segments(
             file=file,
@@ -145,6 +167,10 @@ class FasterWhisperHandler:
             log_prob_threshold=log_prob_threshold,
             prompt_reset_on_temperature=prompt_reset_on_temperature,
         )
+
+        if diarization:
+            dia_segments = self.diarization.diarize(file, diarization_speaker_count)
+            segments = merge_whipser_diarization(segments, dia_segments)
 
         return segments_to_response(segments, transcription_info, response_format)
 
@@ -237,6 +263,7 @@ class FasterWhisperHandler:
                 prompt_reset_on_temperature=prompt_reset_on_temperature,
             )
         segments = Segment.from_faster_whisper_segments(segments)
+
         return segments, transcription_info
 
 
@@ -262,14 +289,12 @@ class BatchFasterWhisper:
         "max_concurrency": MAX_CONCURRENCY,
     },
     metrics={
-    "enabled": True,
-    "namespace": "bentoml_service",
-    "duration": {
-        "buckets": DURATION_BUCKETS_S
-    }
-}
+        "enabled": True,
+        "namespace": "bentoml_service",
+        "duration": {"buckets": DURATION_BUCKETS_S},
+    },
 )
-@bentoml.mount_asgi_app(fastapi, path="/v1")
+@bentoml.asgi_app(fastapi, path="/v1")
 class FasterWhisper:
     batch = bentoml.depends(BatchFasterWhisper)
 
@@ -358,7 +383,9 @@ class FasterWhisper:
         params["vad_parameters"] = vad_parameters
         response_format = params.pop("response_format")
         timestamp_granularities = params["timestamp_granularities"]
-        validate_timestamp_granularities(response_format, timestamp_granularities)
+        validate_timestamp_granularities(
+            response_format, timestamp_granularities, params.get("diarization")
+        )
 
         segments, transcription_info = self.handler.prepare_audio_segments(**params)
         generator = segments_to_streaming_response(
@@ -410,7 +437,7 @@ class FasterWhisper:
     def get_model(
         self,
         model_name=Annotated[
-            str, Path(example="Systran/faster-distil-whisper-large-v3")
+            str, Path(example="Systran/faster-distil-whisper-large-v2")
         ],
     ) -> ModelObject:
         models = huggingface_hub.list_models(

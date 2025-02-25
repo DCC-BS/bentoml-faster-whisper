@@ -15,7 +15,7 @@ ModelName = Annotated[
     Field(
         description="The ID of the model. You can get a list of available models by calling `/v1/models`.",
         examples=[
-            "Systran/faster-distil-whisper-large-v3",
+            "Systran/faster-distil-whisper-large-v2",
             "bofenghuang/whisper-large-v2-cv11-french-ct2",
         ],
     ),
@@ -63,6 +63,7 @@ ValidatedTemperature = Annotated[
 def _process_empty_response_format(response_format: Optional[str]) -> Optional[str]:
     if response_format == "":
         return faster_whisper_config.default_response_format
+
     return response_format
 
 
@@ -103,7 +104,9 @@ def hf_model_info_to_model_object(model: ModelInfo) -> ModelObject:
     return transformed_model
 
 
-def validate_timestamp_granularities(response_format, timestamp_granularities):
+def validate_timestamp_granularities(
+    response_format, timestamp_granularities, diarization: bool | None
+):
     if (
         timestamp_granularities != faster_whisper_config.default_timestamp_granularities
         and response_format != ResponseFormat.VERBOSE_JSON
@@ -124,6 +127,20 @@ def validate_timestamp_granularities(response_format, timestamp_granularities):
             f"is set to {ResponseFormat.VERBOSE_JSON}"
         )
 
+    if response_format == ResponseFormat.JSON_DIARZED and not diarization:
+        raise InvalidArgument(
+            f"response_format must be set to {ResponseFormat.JSON_DIARZED} when diarization is enabled"
+        )
+
+    if (
+        "word" in timestamp_granularities
+        and response_format == ResponseFormat.JSON_DIARZED
+    ):
+        raise InvalidArgument(
+            f"timestamp_granularities must not contain 'word' when response_format "
+            f"is set to {ResponseFormat.JSON_DIARZED}"
+        )
+
 
 class ValidatedVadOptions(BaseModel):
     onset: Annotated[float, "Speech threshold", Ge(0.0), Le(1.0)] = 0.5
@@ -137,7 +154,9 @@ class ValidatedVadOptions(BaseModel):
     min_silence_duration_ms: Annotated[
         int, "Minimum silence duration in milliseconds", Ge(100), Le(10_000)
     ] = 2000
-    speech_pad_ms: Annotated[int, "Speech padding in milliseconds", Ge(10), Le(1000)] = 400
+    speech_pad_ms: Annotated[
+        int, "Speech padding in milliseconds", Ge(10), Le(1000)
+    ] = 400
 
 
 class TranscriptionRequest(BaseModel):
@@ -146,10 +165,10 @@ class TranscriptionRequest(BaseModel):
         default=faster_whisper_config.default_model_name,
         description="Whisper model to load",
     )
-    language: Optional[ValidatedLanguage] = Field(
+    language: ValidatedLanguage = Field(
         default=faster_whisper_config.default_language,
         description='The language spoken in the audio. It should be a language code such as "en" or "fr". If '
-        "not set, the language will be detected in the first 30 seconds of audio.",
+        "not set, the language will be detected in the first 30 secondss of audio.",
     )
     prompt: Optional[str] = Field(
         default=faster_whisper_config.default_prompt,
@@ -212,9 +231,7 @@ class TranscriptionRequest(BaseModel):
         default=faster_whisper_config.patience,
         description="Beam search patience factor.",
     )
-    compression_ratio_threshold: Optional[
-        Annotated[float, Ge(0.0), Le(4.0)]
-    ] = Field(
+    compression_ratio_threshold: Optional[Annotated[float, Ge(0.0), Le(4.0)]] = Field(
         default=faster_whisper_config.compression_ratio_threshold,
         description="If the gzip compression ratio is above this value, treat as failed.",
     )
@@ -222,12 +239,19 @@ class TranscriptionRequest(BaseModel):
         default=faster_whisper_config.log_prob_threshold,
         description="If the average log probability over sampled tokens is below this value, treat as failed.",
     )
-    prompt_reset_on_temperature: Optional[
-        Annotated[float, Ge(0.0), Le(2.0)]
-    ] = Field(
+    prompt_reset_on_temperature: Optional[Annotated[float, Ge(0.0), Le(2.0)]] = Field(
         default=faster_whisper_config.prompt_reset_on_temperature,
         description="Resets prompt if temperature is above this value. Arg has effect only if condition_on_previous_text is True.",
     )
+    diarization: Optional[bool] = Field(
+        default=False,
+        description="If True, the model will attempt to separate speakers in the audio.",
+    )
+    diarization_speaker_count: Optional[Annotated[int, Ge(2)]] = Field(
+        default=None,
+        description="The number of speakers to separate in the audio. This argument is only used if diarization is True.",
+    )
+
 
 class TranslationRequest(BaseModel):
     file: Annotated[Path, ContentType("audio/mpeg")]
@@ -290,9 +314,7 @@ class TranslationRequest(BaseModel):
         default=faster_whisper_config.patience,
         description="Beam search patience factor.",
     )
-    compression_ratio_threshold: Optional[
-        Annotated[float, Ge(0.0), Le(4.0)]
-    ] = Field(
+    compression_ratio_threshold: Optional[Annotated[float, Ge(0.0), Le(4.0)]] = Field(
         default=faster_whisper_config.compression_ratio_threshold,
         description="If the gzip compression ratio is above this value, treat as failed.",
     )
@@ -300,9 +322,7 @@ class TranslationRequest(BaseModel):
         default=faster_whisper_config.log_prob_threshold,
         description="If the average log probability over sampled tokens is below this value, treat as failed.",
     )
-    prompt_reset_on_temperature: Optional[
-        Annotated[float, Ge(0.0), Le(2.0)]
-    ] = Field(
+    prompt_reset_on_temperature: Optional[Annotated[float, Ge(0.0), Le(2.0)]] = Field(
         default=faster_whisper_config.prompt_reset_on_temperature,
         description="Resets prompt if temperature is above this value. Arg has effect only if condition_on_previous_text is True.",
     )

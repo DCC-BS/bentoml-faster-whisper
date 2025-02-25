@@ -17,6 +17,7 @@ class Word(BaseModel):
     end: float
     word: str
     probability: float
+    speaker: str | None = None
 
     @classmethod
     def from_segments(cls, segments: Iterable[Segment]) -> list[Word]:
@@ -24,9 +25,9 @@ class Word(BaseModel):
         for segment in segments:
             # NOTE: a temporary "fix" for https://github.com/fedirz/faster-whisper-server/issues/58.
             # TODO: properly address the issue
-            assert (
-                segment.words is not None
-            ), "Segment must have words. If you are using an API ensure `timestamp_granularities[]=word` is set"
+            assert segment.words is not None, (
+                "Segment must have words. If you are using an API ensure `timestamp_granularities[]=word` is set"
+            )
             words.extend(segment.words)
         return words
 
@@ -58,6 +59,7 @@ class Segment(BaseModel):
     compression_ratio: float
     no_speech_prob: float
     words: list[Word] | None
+    speaker: str | None = None
 
     @classmethod
     def from_faster_whisper_segments(
