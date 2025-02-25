@@ -1,9 +1,10 @@
+import os
+from typing import List
+
+import torch
+from loguru import logger
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
-import torch
-import os
-from loguru import logger
-from typing import List, Tuple
 
 
 class DiarizationSegment:

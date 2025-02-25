@@ -1,8 +1,8 @@
 import pytest
-from core import Segment as WhisperSegment
+from pyannote.core import Segment
+
 from diarization_service import DiarizationSegment
 from whiper_diarization_merger import merge_whipser_diarization
-from pyannote.core import Segment
 
 
 class DummyWord:

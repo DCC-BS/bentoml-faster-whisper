@@ -1,13 +1,12 @@
-import pytest
-
 from pathlib import Path
 
+import pytest
 from faster_whisper import WhisperModel
 
-from config import WhisperModelConfig
-from model_manager import WhisperModelManager
 from api_models.enums import ResponseFormat
 from api_models.output_models import segments_to_response
+from config import WhisperModelConfig
+from model_manager import WhisperModelManager
 
 
 class TestFasterWhisperBug:

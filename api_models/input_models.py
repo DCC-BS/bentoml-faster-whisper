@@ -3,9 +3,10 @@ from typing import Annotated, List, Optional, Union
 
 from annotated_types import Ge, Le, MaxLen
 from bentoml.exceptions import InvalidArgument
-from huggingface_hub import ModelInfo
-from pydantic import BaseModel, BeforeValidator, Field, confloat
 from bentoml.validators import ContentType
+from huggingface_hub import ModelInfo
+from pydantic import BaseModel, BeforeValidator, Field
+
 from api_models.enums import Language, ResponseFormat, TimestampGranularity
 from api_models.output_models import ModelObject, logger
 from config import faster_whisper_config
@@ -50,9 +51,11 @@ def _convert_temperature(
     return [float(t.strip()) for t in temperatures]
 
 
-BoundedTemperature = confloat(
-    ge=faster_whisper_config.min_temperature, le=faster_whisper_config.max_temperature
-)
+BoundedTemperature = Annotated[
+    float,
+    Ge(faster_whisper_config.min_temperature),
+    Le(faster_whisper_config.max_temperature),
+]
 
 ValidatedTemperature = Annotated[
     Union[BoundedTemperature, List[BoundedTemperature]],
@@ -193,14 +196,16 @@ class TranscriptionRequest(BaseModel):
     )
     best_of: Optional[Annotated[int, Ge(1), Le(10)]] = Field(
         default=faster_whisper_config.best_of,
-        desription="Number of candidates when sampling with non-zero temperature.",
+        description="Number of candidates when sampling with non-zero temperature.",
     )
     vad_filter: Optional[bool] = Field(
         default=faster_whisper_config.vad_filter,
         description="Enable the voice activity detection (VAD) to filter out parts of the audio without speech. This step is using the Silero VAD model https://github.com/snakers4/silero-vad.",
     )
     vad_parameters: Optional[ValidatedVadOptions] = Field(
-        default=faster_whisper_config.vad_parameters,
+        default=ValidatedVadOptions.model_validate(
+            faster_whisper_config.vad_parameters
+        ),
         description="Dictionary of Silero VAD parameters or VadOptions class (see available parameters and default values in the class `VadOptions`).",
     )
     condition_on_previous_text: Optional[bool] = Field(
@@ -276,14 +281,16 @@ class TranslationRequest(BaseModel):
     )
     best_of: Optional[Annotated[int, Ge(1), Le(10)]] = Field(
         default=faster_whisper_config.best_of,
-        desription="Number of candidates when sampling with non-zero temperature.",
+        description="Number of candidates when sampling with non-zero temperature.",
     )
     vad_filter: Optional[bool] = Field(
         default=faster_whisper_config.vad_filter,
         description="Enable the voice activity detection (VAD) to filter out parts of the audio without speech. This step is using the Silero VAD model https://github.com/snakers4/silero-vad.",
     )
     vad_parameters: Optional[ValidatedVadOptions] = Field(
-        default=faster_whisper_config.vad_parameters,
+        default=ValidatedVadOptions.model_validate(
+            faster_whisper_config.vad_parameters
+        ),
         description="Dictionary of Silero VAD parameters or VadOptions class (see available parameters and default values in the class `VadOptions`).",
     )
     condition_on_previous_text: Optional[bool] = Field(

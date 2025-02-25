@@ -8,7 +8,9 @@ import huggingface_hub
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from faster_whisper.vad import VadOptions
+from prometheus_client import Histogram
 from pydub import AudioSegment
+
 from api_models.enums import ResponseFormat, Task
 from api_models.input_models import (
     TranscriptionRequest,
@@ -27,14 +29,12 @@ from core import Segment
 from diarization_service import DiarizationService
 from logger import configure_logging
 from model_manager import WhisperModelManager
-from prometheus_client import Histogram
 from whiper_diarization_merger import merge_whipser_diarization
 
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo
 
 from pathlib import Path
-
 
 logger = logging.getLogger(__name__)
 
@@ -277,7 +277,7 @@ class BatchFasterWhisper:
     )
     async def batch_transcribe(self, requests: List[TranscriptionRequest]) -> List[str]:
         logger.debug(f"number of requests processed: {len(requests)}")
-        return [self.handler.transcribe_audio() for request in requests]
+        return [self.handler.transcribe_audio() for _ in requests]
 
 
 @bentoml.service(
@@ -447,7 +447,7 @@ class FasterWhisper:
             cardData=True,
         )
         models = list(models)
-        models.sort(key=lambda model: model.downloads, reverse=True)  # type: ignore  # noqa: PGH003
+        models.sort(key=lambda model: model.downloads, reverse=True)  # noqa: PGH003
         if len(models) == 0:
             raise HTTPException(status_code=404, detail="No models found.")
         exact_match: ModelInfo | None = None

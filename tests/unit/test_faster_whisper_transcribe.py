@@ -1,12 +1,10 @@
 import json
 from pathlib import Path
 
-from fastapi import HTTPException
 import pytest
 from bentoml.exceptions import InvalidArgument
-import torch
 
-from api_models.enums import TimestampGranularity, ResponseFormat
+from api_models.enums import ResponseFormat, TimestampGranularity
 from api_models.input_models import TranscriptionRequest
 from service import FasterWhisper
 
