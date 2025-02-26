@@ -5,5 +5,5 @@ def test_diarize():
     sut = DiarizationService()
     sut.load()
 
-    segments = sut.diarize("./tests/assets/example_audio_german.mp3")
+    segments = list(sut.diarize("./tests/assets/example_audio_german.mp3"))
     assert len(segments) == 1

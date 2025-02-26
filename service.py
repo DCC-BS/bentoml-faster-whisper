@@ -1,8 +1,7 @@
 import logging
 import os
-import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, AsyncGenerator, List
+from typing import TYPE_CHECKING, Annotated, Any, AsyncGenerator, Generator, List, Union
 
 import bentoml
 import huggingface_hub
@@ -11,8 +10,6 @@ from fastapi import FastAPI, HTTPException
 from faster_whisper.vad import VadOptions
 
 from api_models.input_models import (
-    TranscriptionRequest,
-    TranslationRequest,
     hf_model_info_to_model_object,
     validate_timestamp_granularities,
 )
@@ -21,13 +18,11 @@ from api_models.output_models import (
     ModelObject,
     segments_to_streaming_response,
 )
+from api_models.TranscriptionRequest import TranscriptionRequest
+from api_models.TranslationRequest import TranslationRequest
 from handlers.fast_whipser_handler import FasterWhisperHandler
+from helpers.timing import measure_processing_time
 from logger import configure_logging
-from utils import (
-    get_audio_duration,
-    input_audio_length_histogram,
-    realtime_factor_histogram,
-)
 
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo
@@ -60,6 +55,14 @@ DURATION_BUCKETS_S = [
     float("inf"),
 ]
 
+# Define a type alias for the content-annotated return types
+WhisperResponse = Union[
+    Annotated[str, bentoml.validators.ContentType("text/plain")],
+    Annotated[str, bentoml.validators.ContentType("application/json")],
+    Annotated[str, bentoml.validators.ContentType("text/vtt")],
+    Annotated[str, bentoml.validators.ContentType("text/event-stream")],
+]
+
 
 @bentoml.service(traffic={"timeout": TIMEOUT})
 class BatchFasterWhisper:
@@ -71,7 +74,7 @@ class BatchFasterWhisper:
     )
     async def batch_transcribe(self, requests: List[TranscriptionRequest]) -> List[str]:
         logger.debug(f"number of requests processed: {len(requests)}")
-        return [self.handler.transcribe_audio() for _ in requests]
+        return [self.handler.transcribe_audio(request) for request in requests]
 
 
 @bentoml.service(
@@ -96,45 +99,19 @@ class FasterWhisper:
         self.handler = FasterWhisperHandler()
 
     @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)
-    def transcribe(
-        self, **params: Any
-    ) -> (
-        Annotated[str, bentoml.validators.ContentType("text/plain")]
-        | Annotated[str, bentoml.validators.ContentType("application/json")]
-        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
-    ):
-        start_time = time.time()
-        vad_parameters = params["vad_parameters"]
-        if isinstance(vad_parameters, dict):
-            vad_parameters = VadOptions(**vad_parameters)
-        vad_parameters.max_speech_duration_s = (
-            float("inf")
-            if vad_parameters.max_speech_duration_s == 999_999
-            else vad_parameters.max_speech_duration_s
-        )
-        params["vad_parameters"] = vad_parameters
-        result = self.handler.transcribe_audio(**params)
-        end_time = time.time()
-        duration = end_time - start_time
-        audio_file = params["file"]
-        audio_duration = get_audio_duration(audio_file)
-        input_audio_length_histogram.observe(audio_duration)
-        realtime_factor_histogram.observe(audio_duration / duration)
+    @measure_processing_time
+    def transcribe(self, **params: Any) -> WhisperResponse:
+        request = TranscriptionRequest.from_dict(params)
+        self._prepare_transcribe(request)
+        result = self.handler.transcribe_audio(request)
         return result
 
     @bentoml.api(
         route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest
     )
-    async def batch_transcribe(
-        self, **params: Any
-    ) -> (
-        Annotated[str, bentoml.validators.ContentType("text/plain")]
-        | Annotated[str, bentoml.validators.ContentType("application/json")]
-        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
-    ):
-        request = TranscriptionRequest(**params)
+    async def batch_transcribe(self, **params: Any) -> WhisperResponse:
+        request = TranscriptionRequest.from_dict(params)
+        self._prepare_transcribe(request)
         result = await self.batch.batch_transcribe([request])
         return result[0]
 
@@ -142,79 +119,34 @@ class FasterWhisper:
         route="/v1/audio/transcriptions/task",
         input_spec=TranscriptionRequest,
     )
-    def task_transcribe(
-        self, **params: Any
-    ) -> (
-        Annotated[str, bentoml.validators.ContentType("text/plain")]
-        | Annotated[str, bentoml.validators.ContentType("application/json")]
-        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
-    ):
-        vad_parameters = params["vad_parameters"]
-        if isinstance(vad_parameters, dict):
-            vad_parameters = VadOptions(**vad_parameters)
-        vad_parameters.max_speech_duration_s = (
-            float("inf")
-            if vad_parameters.max_speech_duration_s == 999_999
-            else vad_parameters.max_speech_duration_s
-        )
-        params["vad_parameters"] = vad_parameters
-
-        return self.handler.transcribe_audio(**params)
+    def task_transcribe(self, **params: Any) -> WhisperResponse:
+        request = TranscriptionRequest.from_dict(params)
+        self._prepare_transcribe(request)
+        return self.handler.transcribe_audio(request)
 
     @bentoml.api(
         route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest
     )
-    async def streaming_transcribe(self, **params: Any) -> AsyncGenerator[str, None]:
-        vad_parameters = params["vad_parameters"]
-        if isinstance(vad_parameters, dict):
-            vad_parameters = VadOptions(**vad_parameters)
-        vad_parameters.max_speech_duration_s = (
-            float("inf")
-            if vad_parameters.max_speech_duration_s == 999_999
-            else vad_parameters.max_speech_duration_s
-        )
-        params["vad_parameters"] = vad_parameters
-        response_format = params.pop("response_format")
-        timestamp_granularities = params["timestamp_granularities"]
-        validate_timestamp_granularities(
-            response_format, timestamp_granularities, params.get("diarization")
-        )
+    @measure_processing_time
+    def streaming_transcribe(self, **params: Any) -> Generator[str, None, None]:
+        request = TranscriptionRequest.from_dict(params)
 
-        segments, transcription_info = self.handler.prepare_audio_segments(**params)
+        self._prepare_transcribe(request)
+
+        segments, transcription_info = self.handler.prepare_audio_segments(request)
         generator = segments_to_streaming_response(
-            segments, transcription_info, response_format
+            segments, transcription_info, request.response_format
         )
 
         for chunk in generator:
             yield chunk
 
     @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)
-    def translate(
-        self, **params: Any
-    ) -> (
-        Annotated[str, bentoml.validators.ContentType("text/plain")]
-        | Annotated[str, bentoml.validators.ContentType("application/json")]
-        | Annotated[str, bentoml.validators.ContentType("text/vtt")]
-        | Annotated[str, bentoml.validators.ContentType("text/event-stream")]
-    ):
-        start_time = time.time()
-        vad_parameters = params["vad_parameters"]
-        if isinstance(vad_parameters, dict):
-            vad_parameters = VadOptions(**vad_parameters)
-        vad_parameters.max_speech_duration_s = (
-            float("inf")
-            if vad_parameters.max_speech_duration_s == 999_999
-            else vad_parameters.max_speech_duration_s
-        )
-        params["vad_parameters"] = vad_parameters
+    @measure_processing_time
+    def translate(self, **params: Any) -> WhisperResponse:
+        request = TranslationRequest.from_dict(params)
+        self._configure_vad_options(request)
         result = self.handler.translate_audio(**params)
-        end_time = time.time()
-        duration = end_time - start_time
-        audio_file = params["file"]
-        audio_duration = get_audio_duration(audio_file)
-        input_audio_length_histogram.observe(audio_duration)
-        realtime_factor_histogram.observe(audio_duration / duration)
         return result
 
     @fastapi.get("/models")
@@ -255,3 +187,24 @@ class FasterWhisper:
                 detail=f"Model doesn't exists. Possible matches: {', '.join([model.id for model in models])}",
             )
         return hf_model_info_to_model_object(exact_match)
+
+    def _prepare_transcribe(self, request: TranscriptionRequest):
+        validate_timestamp_granularities(
+            request.response_format,
+            request.timestamp_granularities,
+            request.diarization,
+        )
+        self._configure_vad_options(request)
+
+    def _configure_vad_options(
+        self, request: TranscriptionRequest | TranslationRequest
+    ):
+        vad_parameters = request.vad_parameters
+        if isinstance(vad_parameters, dict):
+            vad_parameters = VadOptions(**vad_parameters)
+        vad_parameters.max_speech_duration_s = (
+            float("inf")
+            if vad_parameters.max_speech_duration_s == 999_999
+            else vad_parameters.max_speech_duration_s
+        )
+        request.vad_parameters = vad_parameters

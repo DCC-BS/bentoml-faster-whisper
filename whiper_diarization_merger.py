@@ -1,15 +1,38 @@
-from typing import Any, Dict, Iterable, List, Optional
+import itertools
+from typing import Iterable, Optional
 
 from core import Segment as WhisperSegment
 from diarization_service import DiarizationSegment
+from helpers.iter_with_peek import IterWithPeek
+
+
+def _pack_segements_in_range(
+    segments: IterWithPeek[DiarizationSegment],
+    start_time: float,
+    end_time: float,
+) -> Iterable[DiarizationSegment]:
+    while segments.has_next() and segments.peek().start <= end_time:
+        next_segment = segments.peek()
+
+        # skip the segment if it ends before the window
+        if next_segment.end < start_time:
+            next(segments)
+            continue
+
+        yield next_segment
+
+        # break and don't consume the segment if the segment ends after the window
+        if next_segment.end > end_time:
+            break
+
+        next(segments)
 
 
 def _find_best_speaker(
-    diarize_list: List[Dict[str, Any]],
+    segments: Iterable[DiarizationSegment],
     start_time: float,
     end_time: float,
-    window_start: int,
-) -> tuple[Optional[str], int]:
+) -> Optional[str]:
     """
     Find the best matching speaker for a time segment.
 
@@ -19,61 +42,51 @@ def _find_best_speaker(
     best_intersection = 0
     best_speaker = None
 
-    for i in range(window_start, len(diarize_list)):
-        d = diarize_list[i]
-        if d["start"] > end_time:
-            break  # No more potential overlaps
-
-        # Calculate intersection
-        intersection = min(d["end"], end_time) - max(d["start"], start_time)
+    for d in segments:
+        intersection = min(d.end, end_time) - max(d.start, start_time)
         if intersection > best_intersection:
             best_intersection = intersection
-            best_speaker = d["speaker"]
+            best_speaker = d.speaker
 
-    # Update window to skip segments that end before current segment
-    while (
-        window_start < len(diarize_list)
-        and diarize_list[window_start]["end"] <= start_time
-    ):
-        window_start += 1
-
-    return best_speaker, window_start
+    return best_speaker
 
 
 def merge_whipser_diarization(
     whisper_segments: Iterable[WhisperSegment],
     diarization_segments: Iterable[DiarizationSegment],
 ) -> Iterable[WhisperSegment]:
-    # Convert to lists and sort diarization segments by start time
-    whisper_list = list(whisper_segments)
-    diarize_list = sorted(
-        [vars(d) for d in diarization_segments], key=lambda x: x["start"]
-    )
+    diarization_segments_peekable = IterWithPeek(diarization_segments)
 
-    # Sliding window index for optimization
-    window_start = 0
-
-    for seg in whisper_list:
-        # Find best speaker for segment
-        best_speaker, window_start = _find_best_speaker(
-            diarize_list, seg.start, seg.end, window_start
+    for seg in whisper_segments:
+        candidates = _pack_segements_in_range(
+            diarization_segments_peekable, seg.start, seg.end
         )
+
+        # Create a copy of the candidates for the words
+        seg_candidates, word_candidates_it = itertools.tee(candidates)
+        word_candidates = IterWithPeek(word_candidates_it)
+
+        # Find best speaker for segment
+        best_speaker = _find_best_speaker(seg_candidates, seg.start, seg.end)
 
         # Assign speaker
         if best_speaker:
             seg.speaker = best_speaker
 
         # Process words with the same approach
-        if seg.words is not None:
-            word_window = window_start  # Start from the same window position
-
+        if seg.words is not None:  # Start from the same window position
             for word in seg.words:
-                best_word_speaker, word_window = _find_best_speaker(
-                    diarize_list, word.start, word.end, word_window
+                current_word_candidates = _pack_segements_in_range(
+                    word_candidates, word.start, word.end
+                )
+                best_word_speaker = _find_best_speaker(
+                    current_word_candidates,
+                    word.start,
+                    word.end,
                 )
 
                 # Assign speaker
                 if best_word_speaker:
                     word.speaker = best_word_speaker
 
-    return whisper_list
+        yield seg

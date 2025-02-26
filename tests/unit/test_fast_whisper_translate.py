@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pytest
+
 from api_models.enums import ResponseFormat
+from api_models.TranslationRequest import TranslationRequest
 from service import FasterWhisper
-from api_models.input_models import TranslationRequest
 
 
 @pytest.fixture(scope="module")

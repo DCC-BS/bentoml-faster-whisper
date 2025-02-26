@@ -5,7 +5,7 @@ import pytest
 from bentoml.exceptions import InvalidArgument
 
 from api_models.enums import ResponseFormat, TimestampGranularity
-from api_models.input_models import TranscriptionRequest
+from api_models.TranscriptionRequest import TranscriptionRequest
 from service import FasterWhisper
 
 

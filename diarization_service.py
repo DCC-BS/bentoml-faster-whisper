@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import Iterable
 
 import torch
 from loguru import logger
@@ -16,7 +16,7 @@ class DiarizationSegment:
         self.end = segment.end
 
     def __str__(self):
-        return f"Segment: {self.segment}, Label: {self.label}, Speaker: {self.speaker}"
+        return f"Segment: {self.segment}, Label: {self.label}, Speaker: {self.speaker}, Time: [{self.start} - {self.end}]"
 
     def __repr__(self):
         return self.__str__()
@@ -45,7 +45,7 @@ class DiarizationService:
     @logger.catch
     def diarize(
         self, audio_path: str, num_speaker: int | None = None
-    ) -> List[DiarizationSegment]:
+    ) -> Iterable[DiarizationSegment]:
         """
         Perform speaker diarization on the given audio file.
 
@@ -67,11 +67,5 @@ class DiarizationService:
         segments = self.pipeline(audio_path, num_speakers=num_speaker)
         logger.info("Diarization completed")
 
-        diarization_segments = list(
-            map(
-                lambda x: DiarizationSegment(x[0], x[1], x[2]),
-                segments.itertracks(yield_label=True),
-            )
-        )
-
-        return diarization_segments
+        for segment in segments.itertracks(yield_label=True):
+            yield DiarizationSegment(segment[0], segment[1], segment[2])
