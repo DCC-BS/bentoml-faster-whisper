@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, AsyncGenerator, Generator, List, Union
+from typing import TYPE_CHECKING, Annotated, Any, Generator, List, Union
 
 import bentoml
 import huggingface_hub
