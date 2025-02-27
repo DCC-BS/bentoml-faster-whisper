@@ -21,26 +21,7 @@ def measure_processing_time(func: Callable) -> Callable:
         start_time = time.time()
 
         # Get the request object from either args or kwargs
-        request = kwargs.get("request")
-        if not request and args:
-            for arg in args:
-                if hasattr(arg, "file"):
-                    request = arg
-                    break
-
-        # If no request found in args, check if kwargs has parameters
-        if not request and "params" in kwargs:
-            params = kwargs["params"]
-            if isinstance(params, dict) and "file" in params:
-                audio_file = params["file"]
-            else:
-                # Handle case for **params unpacking
-                audio_file = kwargs.get("file")
-        elif request and hasattr(request, "file"):
-            audio_file = request.file
-        else:
-            # Default case if we can't find the file
-            audio_file = None
+        audio_file = kwargs.get("file")
 
         result = func(self, *args, **kwargs)
 

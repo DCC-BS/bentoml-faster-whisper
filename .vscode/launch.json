@@ -8,8 +8,14 @@
             "name": "Run FasterWhisper Service",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/launch.py",
-            "console": "integratedTerminal"
+            "module": "bentoml",
+            "args": [
+                "serve",
+                "service:FasterWhisper",
+                "-p",
+                "50001"
+            ],
+            "console": "integratedTerminal",
         }
     ]
 }

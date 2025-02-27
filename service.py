@@ -103,8 +103,7 @@ class FasterWhisper:
     def transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
-        result = self.handler.transcribe_audio(request)
-        return result
+        return self.handler.transcribe_audio(request)
 
     @bentoml.api(
         route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest

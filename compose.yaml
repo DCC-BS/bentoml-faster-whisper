@@ -25,6 +25,9 @@ services:
       - MAX_LATENCY_MS
     volumes:
       - hugging_face_cache:/root/.cache/huggingface
+    networks:
+      - default
+      - monitoring-network 
     deploy:
       resources:
         reservations:
@@ -33,6 +36,30 @@ services:
             - driver: nvidia
               device_ids: [ '1' ]
               capabilities: [ gpu ]
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"  # Expose Prometheus UI
+    networks:
+      - default
+      - monitoring-network 
+  
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./grafana_data:/var/lib/grafana  # Persist Grafana data
+    ports:
+      - "3000:3000"  # Expose Grafana UI
+    depends_on:
+      - prometheus
+    networks:
+          - default
+          - monitoring-network
 
 volumes:
   hugging_face_cache:
+
+networks:
+  monitoring-network:
