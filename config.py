@@ -3,8 +3,7 @@ from typing import Dict, List, Union
 
 import torch
 from pydantic import BaseModel, Field
-from faster_whisper.vad import VadOptions
-from api_models.enums import ResponseFormat, TimestampGranularity
+from api_models.enums import Language, ResponseFormat, TimestampGranularity
 
 
 class Device(enum.StrEnum):
@@ -44,9 +43,9 @@ class WhisperModelConfig(BaseModel):
 
 
 class FasterWhisperConfig(BaseModel):
-    default_model_name: str = "large-v3"
-    default_prompt: str = None
-    default_language: str = None
+    default_model_name: str = "large-v2"
+    default_prompt: str = ""
+    default_language: Language = Language.DE
     default_response_format: ResponseFormat = ResponseFormat.JSON
     default_temperature: List[float] = [
         0.0,
@@ -65,14 +64,14 @@ class FasterWhisperConfig(BaseModel):
 
     best_of: int = 10
     vad_filter: bool = True
-    vad_parameters: Dict[str, Union[float, int]] = {
-        "onset": 0.5,
-        "offset": 0.15,
-        "min_speech_duration_ms": 0,
-        "max_speech_duration_s": 999_999,
-        "min_silence_duration_ms": 2000,
-        "speech_pad_ms": 400
-    }
+    vad_parameters: Dict[str, Union[float, int]] = dict(
+        onset=0.5,
+        offset=0.15,
+        min_speech_duration_ms=0,
+        max_speech_duration_s=999_999,
+        min_silence_duration_ms=2000,
+        speech_pad_ms=400,
+    )
     condition_on_previous_text: bool = True
     repetition_penalty: float = 1.0
     length_penalty: float = 1.0

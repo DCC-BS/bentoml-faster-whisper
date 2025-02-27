@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 import gc
 import logging
 import threading
 import time
-
+from collections import OrderedDict
+from collections.abc import Callable
 
 from faster_whisper import WhisperModel
-
-
-from collections.abc import Callable
 
 from config import WhisperModelConfig
 

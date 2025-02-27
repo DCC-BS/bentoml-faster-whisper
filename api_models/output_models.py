@@ -1,13 +1,11 @@
 import logging
-from typing import Iterable, Generator
-from typing import Literal
+from typing import Generator, Iterable, Literal
 
 from faster_whisper.transcribe import TranscriptionInfo
-from pydantic import BaseModel
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from api_models.enums import ResponseFormat
-from core import Segment, segments_to_text, segments_to_vtt, segments_to_srt, Word
+from core import Segment, Word, segments_to_srt, segments_to_text, segments_to_vtt
 
 logger = logging.getLogger(__name__)
 
@@ -57,21 +55,33 @@ class ModelListResponse(BaseModel):
 
 
 def segments_to_response(
-        segments: Iterable[Segment],
-        transcription_info: TranscriptionInfo,
-        response_format: ResponseFormat,
-):
+    segments: Iterable[Segment],
+    transcription_info: TranscriptionInfo,
+    response_format: ResponseFormat,
+) -> str:
     segments = list(segments)
     if response_format == ResponseFormat.TEXT:  # noqa: RET503
         return segments_to_text(segments)
     elif response_format == ResponseFormat.JSON:
-        return TranscriptionJsonResponse.from_segments(segments).model_dump_json()
+        return str(TranscriptionJsonResponse.from_segments(segments).model_dump_json())
+    elif response_format == ResponseFormat.JSON_DIARZED:
+        return str(
+            TranscriptionJsonDiariexedResponse.from_segments(segments).model_dump_json()
+        )
     elif response_format == ResponseFormat.VERBOSE_JSON:
-        return TranscriptionVerboseJsonResponse.from_segments(segments, transcription_info).model_dump_json()
+        return str(
+            TranscriptionVerboseJsonResponse.from_segments(
+                segments, transcription_info
+            ).model_dump_json()
+        )
     elif response_format == ResponseFormat.VTT:
-        return "".join(segments_to_vtt(segment, i) for i, segment in enumerate(segments))
+        return "".join(
+            segments_to_vtt(segment, i) for i, segment in enumerate(segments)
+        )
     elif response_format == ResponseFormat.SRT:
-        return "".join(segments_to_srt(segment, i) for i, segment in enumerate(segments))
+        return "".join(
+            segments_to_srt(segment, i) for i, segment in enumerate(segments)
+        )
 
 
 def format_as_sse(data: str) -> str:
@@ -79,18 +89,26 @@ def format_as_sse(data: str) -> str:
 
 
 def segments_to_streaming_response(
-        segments: Iterable[Segment],
-        transcription_info: TranscriptionInfo,
-        response_format: ResponseFormat,
-):
+    segments: Iterable[Segment],
+    transcription_info: TranscriptionInfo,
+    response_format: ResponseFormat,
+) -> Generator[str, None, None]:
     def segment_responses() -> Generator[str, None, None]:
         for i, segment in enumerate(segments):
             if response_format == ResponseFormat.TEXT:
                 data = segment.text
             elif response_format == ResponseFormat.JSON:
-                data = TranscriptionJsonResponse.from_segments([segment]).model_dump_json()
+                data = TranscriptionJsonResponse.from_segments(
+                    [segment]
+                ).model_dump_json()
+            elif response_format == ResponseFormat.JSON_DIARZED:
+                data = TranscriptionJsonDiariexedResponse.from_segments(
+                    [segment]
+                ).model_dump_json()
             elif response_format == ResponseFormat.VERBOSE_JSON:
-                data = TranscriptionVerboseJsonResponse.from_segment(segment, transcription_info).model_dump_json()
+                data = TranscriptionVerboseJsonResponse.from_segment(
+                    segment, transcription_info
+                ).model_dump_json()
             elif response_format == ResponseFormat.VTT:
                 data = segments_to_vtt(segment, i)
             elif response_format == ResponseFormat.SRT:
@@ -107,8 +125,35 @@ class TranscriptionJsonResponse(BaseModel):
     text: str
 
     @classmethod
-    def from_segments(cls, segments: list[Segment]):
+    def from_segments(cls, segments: list[Segment]) -> "TranscriptionJsonResponse":
         return cls(text=segments_to_text(segments))
+
+
+class SmallSegment(BaseModel):
+    start: float
+    end: float
+    text: str
+    speaker: str | None = None
+
+
+class TranscriptionJsonDiariexedResponse(BaseModel):
+    segments: list[SmallSegment]
+
+    @classmethod
+    def from_segments(
+        cls, segments: list[Segment]
+    ) -> "TranscriptionJsonDiariexedResponse":
+        return cls(
+            segments=[
+                SmallSegment(
+                    start=segment.start,
+                    end=segment.end,
+                    text=segment.text,
+                    speaker=segment.speaker,
+                )
+                for segment in segments
+            ]
+        )
 
 
 # https://platform.openai.com/docs/api-reference/audio/verbose-json-object
@@ -121,7 +166,9 @@ class TranscriptionVerboseJsonResponse(BaseModel):
     segments: list[Segment]
 
     @classmethod
-    def from_segment(cls, segment: Segment, transcription_info: TranscriptionInfo):
+    def from_segment(
+        cls, segment: Segment, transcription_info: TranscriptionInfo
+    ) -> "TranscriptionVerboseJsonResponse":
         return cls(
             language=transcription_info.language,
             duration=segment.end - segment.start,
@@ -131,7 +178,9 @@ class TranscriptionVerboseJsonResponse(BaseModel):
         )
 
     @classmethod
-    def from_segments(cls, segments: list[Segment], transcription_info: TranscriptionInfo):
+    def from_segments(
+        cls, segments: list[Segment], transcription_info: TranscriptionInfo
+    ) -> "TranscriptionVerboseJsonResponse":
         return cls(
             language=transcription_info.language,
             duration=transcription_info.duration,
