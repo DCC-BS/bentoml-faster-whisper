@@ -45,4 +45,10 @@ explicit = true
 [dependency-groups]
 dev = [
     "mypy>=1.15.0",
+    "openai>=1.65.1",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+fix = true

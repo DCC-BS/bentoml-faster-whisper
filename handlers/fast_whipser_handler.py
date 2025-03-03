@@ -3,6 +3,7 @@ from api_models.input_models import (
     validate_timestamp_granularities,
 )
 from api_models.output_models import (
+    WhisperResponse,
     segments_to_response,
 )
 from api_models.TranscriptionRequest import TranscriptionRequest
@@ -22,7 +23,7 @@ class FasterWhisperHandler:
     def transcribe_audio(
         self,
         request: TranscriptionRequest,
-    ) -> str:
+    ) -> WhisperResponse:
         validate_timestamp_granularities(
             request.response_format,
             request.timestamp_granularities,
@@ -31,9 +32,7 @@ class FasterWhisperHandler:
 
         segments, transcription_info = self.prepare_audio_segments(request)
 
-        return segments_to_response(
-            segments, transcription_info, request.response_format
-        )
+        return segments_to_response(segments, transcription_info, request.response_format)
 
     def translate_audio(
         self,
@@ -106,9 +105,7 @@ class FasterWhisperHandler:
         segments = Segment.from_faster_whisper_segments(segments)
 
         if request.diarization:
-            dia_segments = self.diarization.diarize(
-                request.file, request.diarization_speaker_count
-            )
+            dia_segments = self.diarization.diarize(request.file, request.diarization_speaker_count)
             segments = merge_whipser_diarization(segments, dia_segments)
 
         return segments, transcription_info

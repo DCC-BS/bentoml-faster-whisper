@@ -11,7 +11,7 @@ services:
       - "quay.io/ktbs/fd-itbs-dms/faster-whisper:latest"
       - "quay.io/ktbs/fd-itbs-dms/faster-whisper:1.0.0"
     ports:
-      - '9001:50001'
+      - '50001:50001'
     environment:
       - http_proxy
       - HTTP_PROXY

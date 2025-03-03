@@ -16,11 +16,6 @@ def faster_whisper_service():
 
 
 def _extend_params(**params):
-    if "timestamp_granularities" in params:
-        params = params | {
-            "timestamp_granularities[]": params.get("timestamp_granularities") or []
-        }
-
     return TranscriptionRequest.model_validate(params).model_dump()
 
 
@@ -29,26 +24,20 @@ def test_transcribe_standard_case(faster_whisper_service):
     file = Path("./tests/assets/example_audio.mp3")
 
     # when
-    transcription = faster_whisper_service.transcribe(
-        **_extend_params(file=file, response_format=ResponseFormat.JSON)
-    )
+    transcription = faster_whisper_service.transcribe(**_extend_params(file=file, response_format=ResponseFormat.JSON))
 
     # then
     assert transcription is not None
 
 
-@pytest.mark.parametrize(
-    "temperature", [[0.3, 0.6], [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], 0.0]
-)
+@pytest.mark.parametrize("temperature", [[0.3, 0.6], [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], 0.0])
 def test_transcribe_temperature(faster_whisper_service, temperature):
     # given
     file = Path("./tests/assets/example_audio.mp3")
 
     # when
     transcription = faster_whisper_service.transcribe(
-        **_extend_params(
-            file=file, temperature=temperature, response_format=ResponseFormat.JSON
-        )
+        **_extend_params(file=file, temperature=temperature, response_format=ResponseFormat.JSON)
     )
 
     # then
@@ -65,9 +54,7 @@ def test_transcribe_temperature(faster_whisper_service, temperature):
         (ResponseFormat.VTT, []),
     ],
 )
-def test_transcribe_response_format(
-    faster_whisper_service, response_format, timestamp_granularities
-):
+def test_transcribe_response_format(faster_whisper_service, response_format, timestamp_granularities):
     # given
     file = Path("./tests/assets/example_audio.mp3")
 

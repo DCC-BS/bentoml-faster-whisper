@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Generator, List, Union
+from typing import TYPE_CHECKING, Annotated, Any, Generator, List
 
 import bentoml
 import huggingface_hub
@@ -16,6 +16,7 @@ from api_models.input_models import (
 from api_models.output_models import (
     ModelListResponse,
     ModelObject,
+    WhisperResponse,
     segments_to_streaming_response,
 )
 from api_models.TranscriptionRequest import TranscriptionRequest
@@ -55,23 +56,13 @@ DURATION_BUCKETS_S = [
     float("inf"),
 ]
 
-# Define a type alias for the content-annotated return types
-WhisperResponse = Union[
-    Annotated[str, bentoml.validators.ContentType("text/plain")],
-    Annotated[str, bentoml.validators.ContentType("application/json")],
-    Annotated[str, bentoml.validators.ContentType("text/vtt")],
-    Annotated[str, bentoml.validators.ContentType("text/event-stream")],
-]
-
 
 @bentoml.service(traffic={"timeout": TIMEOUT})
 class BatchFasterWhisper:
     def __init__(self):
         self.handler = FasterWhisperHandler()
 
-    @bentoml.api(
-        batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS
-    )
+    @bentoml.api(batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS)
     async def batch_transcribe(self, requests: List[TranscriptionRequest]) -> List[str]:
         logger.debug(f"number of requests processed: {len(requests)}")
         return [self.handler.transcribe_audio(request) for request in requests]
@@ -105,14 +96,11 @@ class FasterWhisper:
         self._prepare_transcribe(request)
         return self.handler.transcribe_audio(request)
 
-    @bentoml.api(
-        route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest
-    )
+    @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)
     async def batch_transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
-        result = await self.batch.batch_transcribe([request])
-        return result[0]
+        return await self.batch.batch_transcribe([request])
 
     @bentoml.task(
         route="/v1/audio/transcriptions/task",
@@ -123,19 +111,15 @@ class FasterWhisper:
         self._prepare_transcribe(request)
         return self.handler.transcribe_audio(request)
 
-    @bentoml.api(
-        route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest
-    )
+    @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)
     @measure_processing_time
-    def streaming_transcribe(self, **params: Any) -> Generator[str, None, None]:
+    def streaming_transcribe(self, **params: Any) -> Generator[WhisperResponse, None, None]:
         request = TranscriptionRequest.from_dict(params)
 
         self._prepare_transcribe(request)
 
         segments, transcription_info = self.handler.prepare_audio_segments(request)
-        generator = segments_to_streaming_response(
-            segments, transcription_info, request.response_format
-        )
+        generator = segments_to_streaming_response(segments, transcription_info, request.response_format)
 
         for chunk in generator:
             yield chunk
@@ -150,9 +134,7 @@ class FasterWhisper:
 
     @fastapi.get("/models")
     def get_models(self) -> ModelListResponse:
-        models = huggingface_hub.list_models(
-            library="ctranslate2", tags="automatic-speech-recognition", cardData=True
-        )
+        models = huggingface_hub.list_models(library="ctranslate2", tags="automatic-speech-recognition", cardData=True)
         models = list(models)
         models.sort(key=lambda model: model.downloads, reverse=True)
         transformed_models = [hf_model_info_to_model_object(model) for model in models]
@@ -161,9 +143,7 @@ class FasterWhisper:
     @fastapi.get("/models/{model_name:path}")
     def get_model(
         self,
-        model_name=Annotated[
-            str, Path(example="Systran/faster-distil-whisper-large-v2")
-        ],
+        model_name=Annotated[str, Path(example="Systran/faster-distil-whisper-large-v2")],
     ) -> ModelObject:
         models = huggingface_hub.list_models(
             model_name=model_name,
@@ -195,15 +175,11 @@ class FasterWhisper:
         )
         self._configure_vad_options(request)
 
-    def _configure_vad_options(
-        self, request: TranscriptionRequest | TranslationRequest
-    ):
+    def _configure_vad_options(self, request: TranscriptionRequest | TranslationRequest):
         vad_parameters = request.vad_parameters
         if isinstance(vad_parameters, dict):
             vad_parameters = VadOptions(**vad_parameters)
         vad_parameters.max_speech_duration_s = (
-            float("inf")
-            if vad_parameters.max_speech_duration_s == 999_999
-            else vad_parameters.max_speech_duration_s
+            float("inf") if vad_parameters.max_speech_duration_s == 999_999 else vad_parameters.max_speech_duration_s
         )
         request.vad_parameters = vad_parameters

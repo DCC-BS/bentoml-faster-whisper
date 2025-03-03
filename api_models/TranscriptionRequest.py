@@ -2,8 +2,9 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 from annotated_types import Ge, Le, MaxLen
+from bentoml.exceptions import InvalidArgument
 from bentoml.validators import ContentType
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field
 
 from api_models.enums import Language
 from api_models.input_models import (
@@ -27,10 +28,16 @@ ValidatedLanguage = Annotated[Language | None, BeforeValidator(_process_empty_la
 
 
 class TranscriptionRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+
     @classmethod
     def from_dict(cls, d: dict) -> "TranscriptionRequest":
-        d["timestamp_granularities[]"] = d.get("timestamp_granularities", [])
-        return cls(**d)
+        try:
+            return TranscriptionRequest.model_validate(d)
+        except TypeError as e:
+            raise InvalidArgument(str(e))
 
     file: Annotated[Path, ContentType("audio/mpeg")]
     model: ModelName = Field(
@@ -59,7 +66,7 @@ class TranscriptionRequest(BaseModel):
     )
     timestamp_granularities: TimestampGranularities = Field(
         default=faster_whisper_config.default_timestamp_granularities,
-        alias="timestamp_granularities[]",
+        validation_alias=AliasChoices("timestamp_granularities", "timestamp_granularities[]"),
         description="The timestamp granularities to populate for this transcription. response_format must be "
         "set verbose_json to use timestamp granularities.",
     )
@@ -72,9 +79,7 @@ class TranscriptionRequest(BaseModel):
         description="Enable the voice activity detection (VAD) to filter out parts of the audio without speech. This step is using the Silero VAD model https://github.com/snakers4/silero-vad.",
     )
     vad_parameters: ValidatedVadOptions = Field(
-        default=ValidatedVadOptions.model_validate(
-            faster_whisper_config.vad_parameters
-        ),
+        default=ValidatedVadOptions.model_validate(faster_whisper_config.vad_parameters),
         description="Dictionary of Silero VAD parameters or VadOptions class (see available parameters and default values in the class `VadOptions`).",
     )
     condition_on_previous_text: bool = Field(
