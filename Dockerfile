@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 COPY --from=ghcr.io/astral-sh/uv:0.5.7 /uv /uvx /bin/
 
@@ -13,4 +13,4 @@ WORKDIR /app
 
 RUN uv sync
 
-ENTRYPOINT uv run bentoml serve service:FasterWhisper -p 50001
+ENTRYPOINT ["uv", "run", "bentoml", "serve", "service:FasterWhisper", "-p", "50001"]
