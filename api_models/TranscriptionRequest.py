@@ -130,3 +130,7 @@ class TranscriptionRequest(BaseModel):
         default=None,
         description="The number of speakers to separate in the audio. This argument is only used if diarization is True.",
     )
+    progress_id: Optional[str] = Field(
+        default=None,
+        description="A unique identifier for reporting the progress of a task.",
+    )

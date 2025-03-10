@@ -17,11 +17,15 @@ from api_models.output_models import (
     ModelListResponse,
     ModelObject,
     WhisperResponse,
+    segments_to_response,
     segments_to_streaming_response,
 )
+from api_models.ProgressResponse import ProgressResponse
 from api_models.TranscriptionRequest import TranscriptionRequest
 from api_models.TranslationRequest import TranslationRequest
+from core import Segment
 from handlers.fast_whipser_handler import FasterWhisperHandler
+from handlers.progress_handler import ProgressHandler
 from helpers.timing import measure_processing_time
 from logger import configure_logging
 
@@ -88,6 +92,7 @@ class FasterWhisper:
 
     def __init__(self):
         self.handler = FasterWhisperHandler()
+        self.progress_handler = ProgressHandler()
 
     @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)
     @measure_processing_time
@@ -109,7 +114,31 @@ class FasterWhisper:
     def task_transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
-        return self.handler.transcribe_audio(request)
+
+        result: List[Segment] = []
+
+        if request.progress_id:
+            self.progress_handler.add_progress(request.progress_id)
+
+        segments, transcription_info = self.handler.prepare_audio_segments(request)
+
+        for segment in segments:
+            if request.progress_id:
+                (
+                    self.progress_handler.update_progress(
+                        request.progress_id,
+                        ProgressResponse(
+                            progress=segment.end / transcription_info.duration,
+                            currentTime=segment.end,
+                            duration=transcription_info.duration,
+                        ),
+                    ),
+                )
+
+            result.append(segment)
+
+        self.progress_handler.remove_progress(request.progress_id)
+        return segments_to_response(result, transcription_info, request.response_format)
 
     @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)
     @measure_processing_time
@@ -131,6 +160,10 @@ class FasterWhisper:
         self._configure_vad_options(request)
         result = self.handler.translate_audio(**params)
         return result
+
+    @fastapi.get("/progress/{progress_id}")
+    def get_progress(self, progress_id: str) -> ProgressResponse:
+        return self.progress_handler.get_progress(progress_id)
 
     @fastapi.get("/models")
     def get_models(self) -> ModelListResponse:
