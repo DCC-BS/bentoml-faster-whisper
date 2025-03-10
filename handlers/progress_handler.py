@@ -8,6 +8,9 @@ class ProgressHandler:
         """Adds a new task to the progress tracker."""
         self.progress_dict[id] = ProgressResponse(progress=0, currentTime=0, duration=0)
 
+        if len(self.progress_dict) > 1000:
+            self.progress_dict.pop(next(iter(self.progress_dict)))
+
     def update_progress(self, id: str, progress: ProgressResponse) -> None:
         """Updates the progress of a given task."""
         self.progress_dict[id] = progress
