@@ -160,3 +160,6 @@ cython_debug/
 #.idea/
 
 grafana_data/
+
+!/.github/workflows/
+!/.github/workflows/*.yml
