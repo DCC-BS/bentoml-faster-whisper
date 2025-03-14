@@ -134,8 +134,8 @@ def validate_timestamp_granularities(
 
 
 class ValidatedVadOptions(BaseModel):
-    onset: Annotated[float, "Speech threshold", Ge(0.0), Le(1.0)] = 0.5
-    offset: Annotated[float, "Silence threshold", Ge(0.0), Le(1.0)] = 0.15
+    threshold: Annotated[float, "Speech threshold", Ge(0.0), Le(1.0)] = 0.5
+    neg_threshold: Annotated[float, "Silence threshold", Ge(0.0), Le(1.0)] = 0.15
     min_speech_duration_ms: Annotated[
         int, "Minimum speech duration in milliseconds", Ge(0), Le(1000)
     ] = 0

@@ -65,8 +65,8 @@ class FasterWhisperConfig(BaseModel):
     best_of: int = 10
     vad_filter: bool = True
     vad_parameters: Dict[str, Union[float, int]] = dict(
-        onset=0.5,
-        offset=0.15,
+        threshold=0.5,
+        neg_threshold=0.15,
         min_speech_duration_ms=0,
         max_speech_duration_s=999_999,
         min_silence_duration_ms=2000,
