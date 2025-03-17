@@ -1,7 +1,8 @@
 import logging
 import os
+from collections.abc import Generator
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Generator, List
+from typing import TYPE_CHECKING, Annotated, Any
 
 import bentoml
 import huggingface_hub
@@ -67,7 +68,7 @@ class BatchFasterWhisper:
         self.handler = FasterWhisperHandler()
 
     @bentoml.api(batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS)
-    async def batch_transcribe(self, requests: List[TranscriptionRequest]) -> List[str]:
+    async def batch_transcribe(self, requests: list[TranscriptionRequest]) -> list[str]:
         logger.debug(f"number of requests processed: {len(requests)}")
         return [self.handler.transcribe_audio(request) for request in requests]
 
@@ -115,7 +116,7 @@ class FasterWhisper:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
 
-        result: List[Segment] = []
+        result: list[Segment] = []
 
         if request.progress_id:
             self.progress_handler.add_progress(request.progress_id)
