@@ -1,3 +1,8 @@
+from http import HTTPStatus
+
+from bentoml.exceptions import BentoMLException
+from fastapi import HTTPException
+
 from api_models.enums import ResponseFormat, Task
 from api_models.input_models import (
     validate_timestamp_granularities,
@@ -105,7 +110,12 @@ class FasterWhisperHandler:
         segments = Segment.from_faster_whisper_segments(segments)
 
         if request.diarization:
-            dia_segments = self.diarization.diarize(request.file, request.diarization_speaker_count)
-            segments = merge_whipser_diarization(segments, dia_segments)
+            if request.file.suffix in [".wav", ".mp3", ".flac"]:
+                dia_segments = self.diarization.diarize(str(request.file), request.diarization_speaker_count)
+                segments = merge_whipser_diarization(segments, dia_segments)
+            else:
+                raise BentoMLException(
+                    error_code=HTTPStatus.BAD_REQUEST, message="Diarization is not supported for non-wav files"
+                )
 
         return segments, transcription_info

@@ -1,9 +1,8 @@
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any
 
 from annotated_types import Ge, Le, MaxLen
 from bentoml.exceptions import InvalidArgument
-from bentoml.validators import ContentType
 from pydantic import AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field
 
 from api_models.enums import Language
@@ -14,16 +13,33 @@ from api_models.input_models import (
     ValidatedTemperature,
     ValidatedVadOptions,
 )
+from api_models.output_models import logger
 from config import faster_whisper_config
 
 
-def _process_empty_language(language: Optional[str]) -> Optional[str]:
-    if language == "":
-        return faster_whisper_config.default_language
-    return language
+def _process_empty_language(language: None | Language | str | bytes) -> Language | None:
+    if isinstance(language, bytes):
+        try:
+            language = language.decode("utf-8")
+        except UnicodeDecodeError:
+            logger.warning(
+                f"Cannot decode bytes language: {language}. Using default: {faster_whisper_config.default_language}"
+            )
+            return Language(value=faster_whisper_config.default_language)
+
+    if language == "" or language is None:
+        return Language(value=faster_whisper_config.default_language)
+
+    if isinstance(language, Language):
+        return language
+
+    try:
+        return Language(value=language)
+    except ValueError:
+        logger.warning(f"Invalid language: {language}. Using default: {faster_whisper_config.default_language}")
+        return Language(value=faster_whisper_config.default_language)
 
 
-# None needed to return None from Validator
 ValidatedLanguage = Annotated[Language | None, BeforeValidator(_process_empty_language)]
 
 
@@ -33,18 +49,18 @@ class TranscriptionRequest(BaseModel):
     )
 
     @classmethod
-    def from_dict(cls, d: dict) -> "TranscriptionRequest":
+    def from_dict(cls, d: dict[str, Any]) -> "TranscriptionRequest":
         try:
             return TranscriptionRequest.model_validate(d)
         except TypeError as e:
             raise InvalidArgument(str(e))
 
-    file: Annotated[Path, ContentType("audio/mpeg")]
+    file: Path = Field(description="The path to the audio file to be transcribed.")
     model: ModelName = Field(
         default=faster_whisper_config.default_model_name,
         description="Whisper model to load",
     )
-    language: ValidatedLanguage = Field(
+    language: ValidatedLanguage | None = Field(
         default=faster_whisper_config.default_language,
         description='The language spoken in the audio. It should be a language code such as "en" or "fr". If '
         "not set, the language will be detected in the first 30 secondss of audio.",
@@ -53,7 +69,7 @@ class TranscriptionRequest(BaseModel):
         default=faster_whisper_config.default_prompt,
         description="Optional text string or iterable of token ids to provide as a prompt for the first window.",
     )
-    response_format: "ValidatedResponseFormat" = Field(
+    response_format: ValidatedResponseFormat | None = Field(
         default=faster_whisper_config.default_response_format,
         description="The format of the output, in one of these options: `json`, `text`, `srt`, `verbose_json`, "
         "or `vtt`.",
@@ -126,11 +142,11 @@ class TranscriptionRequest(BaseModel):
         default=False,
         description="If True, the model will attempt to separate speakers in the audio.",
     )
-    diarization_speaker_count: Annotated[Optional[int], Ge(2)] = Field(
+    diarization_speaker_count: Annotated[int, Ge(2)] | None = Field(
         default=None,
         description="The number of speakers to separate in the audio. This argument is only used if diarization is True.",
     )
-    progress_id: Optional[str] = Field(
+    progress_id: str | None = Field(
         default=None,
         description="A unique identifier for reporting the progress of a task.",
     )

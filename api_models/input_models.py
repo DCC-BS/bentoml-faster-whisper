@@ -1,4 +1,4 @@
-from typing import Annotated, List, Optional, Union
+from typing import Annotated
 
 from annotated_types import Ge, Le
 from bentoml.exceptions import InvalidArgument
@@ -22,29 +22,27 @@ ModelName = Annotated[
 
 
 def _convert_timestamp_granularities(
-    timestamp_granularities: str | List[TimestampGranularity],
-) -> List[TimestampGranularity]:
-    if isinstance(timestamp_granularities, List):
+    timestamp_granularities: str | list[TimestampGranularity],
+) -> list[TimestampGranularity]:
+    if isinstance(timestamp_granularities, list):
         return timestamp_granularities
 
     timestamps = timestamp_granularities.split(",")
     return [TimestampGranularity(t.strip()) for t in timestamps]
 
 
-TimestampGranularities = Annotated[
-    List[TimestampGranularity], BeforeValidator(_convert_timestamp_granularities)
-]
+TimestampGranularities = Annotated[list[TimestampGranularity], BeforeValidator(_convert_timestamp_granularities)]
 
 
 def _convert_temperature(
-    temperature: Union[str, int, float, List[float]],
-) -> List[float]:
-    if isinstance(temperature, List):
+    temperature: str | int | float | list[float],
+) -> list[float]:
+    if isinstance(temperature, list):
         return temperature
     elif isinstance(temperature, (float, int)):
         return [float(temperature)]
 
-    temperatures = temperature.split(",")
+    temperatures: list[str] = temperature.split(",")
 
     return [float(t.strip()) for t in temperatures]
 
@@ -56,29 +54,43 @@ BoundedTemperature = Annotated[
 ]
 
 ValidatedTemperature = Annotated[
-    Union[BoundedTemperature, List[BoundedTemperature]],
+    BoundedTemperature | list[BoundedTemperature],
     BeforeValidator(_convert_temperature),
 ]
 
 
-def _process_empty_response_format(response_format: Optional[str]) -> Optional[str]:
-    if response_format == "":
-        return faster_whisper_config.default_response_format
+def _process_empty_response_format(response_format: str | ResponseFormat | bytes | None) -> ResponseFormat:
+    if isinstance(response_format, bytes):
+        try:
+            response_format = response_format.decode("utf-8")
+        except UnicodeDecodeError:
+            logger.warning(
+                f"Cannot decode bytes response_format: {response_format}. Using default: {faster_whisper_config.default_response_format}"
+            )
+            return ResponseFormat(faster_whisper_config.default_response_format)
 
-    return response_format
+    if response_format == "" or response_format is None:
+        return ResponseFormat(faster_whisper_config.default_response_format)
+
+    if isinstance(response_format, ResponseFormat):
+        return response_format
+
+    try:
+        return ResponseFormat(response_format)
+    except ValueError:
+        logger.warning(
+            f"Invalid response format: {response_format}. Using default: {faster_whisper_config.default_response_format}"
+        )
+        return ResponseFormat(faster_whisper_config.default_response_format)
 
 
-ValidatedResponseFormat = Annotated[
-    ResponseFormat, BeforeValidator(_process_empty_response_format)
-]
+ValidatedResponseFormat = Annotated[ResponseFormat, BeforeValidator(_process_empty_response_format)]
 
 
 def hf_model_info_to_model_object(model: ModelInfo) -> ModelObject:
     assert model.created_at is not None
     assert model.card_data is not None
-    assert model.card_data.language is None or isinstance(
-        model.card_data.language, str | list
-    )
+    assert model.card_data.language is None or isinstance(model.card_data.language, str | list)
     if model.card_data.language is None:
         language = []
     elif isinstance(model.card_data.language, str):
@@ -95,9 +107,7 @@ def hf_model_info_to_model_object(model: ModelInfo) -> ModelObject:
     return transformed_model
 
 
-def validate_timestamp_granularities(
-    response_format, timestamp_granularities, diarization: bool | None
-):
+def validate_timestamp_granularities(response_format, timestamp_granularities, diarization: bool | None):
     if (
         timestamp_granularities != faster_whisper_config.default_timestamp_granularities
         and response_format != ResponseFormat.VERBOSE_JSON
@@ -109,10 +119,7 @@ def validate_timestamp_granularities(
             # noqa: E501
         )
 
-    if (
-        "word" not in timestamp_granularities
-        and response_format == ResponseFormat.VERBOSE_JSON
-    ):
+    if "word" not in timestamp_granularities and response_format == ResponseFormat.VERBOSE_JSON:
         raise InvalidArgument(
             f"timestamp_granularities must contain 'word' when response_format "
             f"is set to {ResponseFormat.VERBOSE_JSON}"
@@ -123,10 +130,7 @@ def validate_timestamp_granularities(
             f"response_format must be set to {ResponseFormat.JSON_DIARZED} when diarization is enabled"
         )
 
-    if (
-        "word" in timestamp_granularities
-        and response_format == ResponseFormat.JSON_DIARZED
-    ):
+    if "word" in timestamp_granularities and response_format == ResponseFormat.JSON_DIARZED:
         raise InvalidArgument(
             f"timestamp_granularities must not contain 'word' when response_format "
             f"is set to {ResponseFormat.JSON_DIARZED}"
@@ -136,15 +140,7 @@ def validate_timestamp_granularities(
 class ValidatedVadOptions(BaseModel):
     threshold: Annotated[float, "Speech threshold", Ge(0.0), Le(1.0)] = 0.5
     neg_threshold: Annotated[float, "Silence threshold", Ge(0.0), Le(1.0)] = 0.15
-    min_speech_duration_ms: Annotated[
-        int, "Minimum speech duration in milliseconds", Ge(0), Le(1000)
-    ] = 0
-    max_speech_duration_s: Annotated[
-        float, "Maximum speech duration in seconds", Ge(0.5)
-    ] = 999_999
-    min_silence_duration_ms: Annotated[
-        int, "Minimum silence duration in milliseconds", Ge(100), Le(10_000)
-    ] = 2000
-    speech_pad_ms: Annotated[
-        int, "Speech padding in milliseconds", Ge(10), Le(1000)
-    ] = 400
+    min_speech_duration_ms: Annotated[int, "Minimum speech duration in milliseconds", Ge(0), Le(1000)] = 0
+    max_speech_duration_s: Annotated[float, "Maximum speech duration in seconds", Ge(0.5)] = 999_999
+    min_silence_duration_ms: Annotated[int, "Minimum silence duration in milliseconds", Ge(100), Le(10_000)] = 2000
+    speech_pad_ms: Annotated[int, "Speech padding in milliseconds", Ge(10), Le(1000)] = 400
