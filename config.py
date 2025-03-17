@@ -3,6 +3,7 @@ from typing import Dict, List, Union
 
 import torch
 from pydantic import BaseModel, Field
+
 from api_models.enums import Language, ResponseFormat, TimestampGranularity
 
 
@@ -29,9 +30,7 @@ class WhisperModelConfig(BaseModel):
 
     inference_device: Device = Device.CUDA if torch.cuda.is_available() else Device.AUTO
     device_index: int | list[int] = 0
-    compute_type: Quantization = (
-        Quantization.FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
-    )
+    compute_type: Quantization = Quantization.FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
     cpu_threads: int = 0
     num_workers: int = 1
     ttl: int = Field(default=300, ge=-1)
@@ -47,7 +46,7 @@ class FasterWhisperConfig(BaseModel):
     default_prompt: str = ""
     default_language: Language = Language.DE
     default_response_format: ResponseFormat = ResponseFormat.JSON
-    default_temperature: List[float] = [
+    default_temperature: list[float] = [
         0.0,
         0.2,
         0.4,
@@ -55,16 +54,14 @@ class FasterWhisperConfig(BaseModel):
         0.8,
         1.0,
     ]
-    default_timestamp_granularities: List[TimestampGranularity] = [
-        TimestampGranularity.SEGMENT
-    ]
+    default_timestamp_granularities: list[TimestampGranularity] = [TimestampGranularity.SEGMENT]
 
     min_temperature: float = 0.0
     max_temperature: float = 2.0
 
     best_of: int = 10
     vad_filter: bool = True
-    vad_parameters: Dict[str, Union[float, int]] = dict(
+    vad_parameters: dict[str, float | int] = dict(
         onset=0.5,
         offset=0.15,
         min_speech_duration_ms=0,
