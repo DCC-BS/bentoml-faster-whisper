@@ -93,6 +93,7 @@
     }
   ],
   "platformAutomerge": true,
+  "ignoreTests": true,
   "prCreation": "immediate",
   "timezone": "Europe/Zurich"
 }
