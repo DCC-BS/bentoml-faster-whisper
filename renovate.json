@@ -1,99 +1,39 @@
 {
+  "forkProcessing": "enabled",
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "dependencyDashboard": true,
   "extends": [
     "config:recommended"
   ],
-  "forkProcessing": "enabled",
-  "labels": [
-    "renovate"
-  ],
   "packageRules": [
     {
-      "automerge": true,
-      "matchCurrentVersion": "!/^0/",
       "matchUpdateTypes": [
         "minor",
         "patch"
-      ]
+      ],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true
     },
     {
-      "automerge": false,
-      "groupName": "python-dependencies",
-      "labels": [
-        "dependencies",
-        "python"
-      ],
       "matchDepTypes": [
-        "dependencies",
         "optionalDependencies",
-        "peerDependencies",
         "devDependencies"
       ],
+      "automerge": true
+    },
+    {
       "matchFileNames": [
-        "pyproject.toml"
-      ]
-    },
-    {
-      "automerge": true,
-      "groupName": "python-dev-tools",
-      "labels": [
-        "dev-dependencies",
-        "python"
+        ".devcontainer/devcontainer.json"
       ],
-      "matchDepTypes": [
-        "devDependencies"
-      ],
-      "matchPackageNames": [
-        "ruff",
-        "mkdocs",
-        "mkdocs-material"
-      ]
-    },
-    {
-      "automerge": true,
-      "groupName": "python-dev-tools",
-      "labels": [
-        "dev-dependencies",
-        "python"
-      ],
-      "matchDepTypes": [
-        "dependencies",
-        "optionalDependencies",
-        "devDependencies"
-      ],
-      "matchPackageNames": [
-        "uv"
-      ]
-    },
-    {
-      "automerge": true,
       "groupName": "devcontainer",
       "labels": [
         "devcontainer"
       ],
-      "matchFileNames": [
-        ".devcontainer/devcontainer.json"
-      ],
-      "minimumReleaseAge": "7 days"
-    },
-    {
       "automerge": true,
-      "groupName": "docker-python-version",
-      "labels": [
-        "docker",
-        "python"
-      ],
-      "matchFileNames": [
-        "Dockerfile"
-      ],
-      "matchPackageNames": [
-        "python"
-      ]
     }
   ],
+  "timezone": "Europe/Zurich",
   "platformAutomerge": true,
+  "dependencyDashboard": true,
   "ignoreTests": true,
-  "prCreation": "immediate",
-  "timezone": "Europe/Zurich"
+  "prCreation": "immediate"
 }
