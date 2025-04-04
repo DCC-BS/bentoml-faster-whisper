@@ -6,6 +6,10 @@
   ],
   "packageRules": [
     {
+      "matchPackageNames": ["python"],
+      "enabled": false
+    },
+    {
       "matchUpdateTypes": [
         "minor",
         "patch"
@@ -28,7 +32,7 @@
       "labels": [
         "devcontainer"
       ],
-      "automerge": true,
+      "automerge": true
     }
   ],
   "timezone": "Europe/Zurich",
