@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu22.04
 
 COPY --from=ghcr.io/astral-sh/uv:0.7.2 /uv /uvx /bin/
 
