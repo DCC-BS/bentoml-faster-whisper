@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu22.04
 
-COPY --from=ghcr.io/astral-sh/uv:0.7.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.7.7 /uv /uvx /bin/
 
 RUN apt-get update && \
     apt-get install -y \
