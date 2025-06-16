@@ -184,7 +184,7 @@ wheels = [
 
 [[package]]
 name = "bentoml"
-version = "1.4.15"
+version = "1.4.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2wsgi" },
@@ -216,7 +216,6 @@ dependencies = [
     { name = "psutil" },
     { name = "pydantic" },
     { name = "python-dateutil" },
-    { name = "python-dotenv" },
     { name = "python-json-logger" },
     { name = "python-multipart" },
     { name = "pyyaml" },
@@ -229,9 +228,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/53/c9/47f188d06196526173e51f1bfa2e461d73bfa9ed5a6f5f18974c9332f184/bentoml-1.4.15.tar.gz", hash = "sha256:e16fd5cbed6cccdafaa8d9c42cacb2d9b39ac2b335eb7b6051930688e6fff4f2", size = 972188, upload-time = "2025-05-23T07:34:23.377Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/9e/5b2c2795e8ba2efbaf46a1edc8520eb3b552b44c346747abb22117a2bf89/bentoml-1.4.16.tar.gz", hash = "sha256:d1181a6cecd07f80ce988339d2da351010ca74f9e264111a61f7bd028746bca9", size = 973642, upload-time = "2025-06-16T08:51:21.816Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/2d/53b0f577abb1d72606b73ac4377b2ce5bafaebc7d7c0a5ee691647790919/bentoml-1.4.15-py3-none-any.whl", hash = "sha256:3e9c411236ddb8a36346e3ab63a0ca742c63dc68140a610501f7b8a9c4ed02a5", size = 1151960, upload-time = "2025-05-23T07:34:20.972Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/38/090cf1eb744bf9f48968ad8c0c64afeb677ed1cae7e0bc3732bca1364402/bentoml-1.4.16-py3-none-any.whl", hash = "sha256:54e6be7efa1fc2a1e3307455f6a8c7268da2da7027d6acdf79a7de61d48fc507", size = 1153771, upload-time = "2025-06-16T08:51:19.707Z" },
 ]
 
 [[package]]
@@ -264,7 +263,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bentoml", specifier = "==1.4.15" },
+    { name = "bentoml", specifier = "==1.4.16" },
     { name = "ctranslate2", specifier = "~=4.6.0" },
     { name = "fastapi", specifier = ">=0.115.5" },
     { name = "faster-whisper", specifier = "==1.1.1" },
