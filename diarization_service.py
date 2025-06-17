@@ -1,8 +1,8 @@
 import os
 from typing import Iterable
 
-import torch
-from loguru import logger
+imfrom loguru import logger
+port torch
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
 
@@ -27,7 +27,7 @@ class DiarizationService:
     A service for speaker diarization using the pyannote.audio library.
     """
 
-    @logger.catch
+    @logger.catch(reraise=True)
     def load(self):
         """
         Load the speaker diarization pipeline from the Hugging Face model hub.
@@ -42,7 +42,7 @@ class DiarizationService:
         # send pipeline to GPU (when available)
         self.pipeline.to(torch.device("cuda"))
 
-    @logger.catch
+    @logger.catch(reraise=True)
     def diarize(
         self, audio_path: str, num_speaker: int | None = None
     ) -> Iterable[DiarizationSegment]:
