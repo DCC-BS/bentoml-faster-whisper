@@ -1,8 +1,8 @@
 import os
 from typing import Iterable
 
-imfrom loguru import logger
-port torch
+from loguru import logger
+import torch
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
 
