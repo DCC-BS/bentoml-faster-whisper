@@ -3,7 +3,7 @@ FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 ENV TZ=Europe/Zurich
 ENV LANG=de_CH.UTF-8
 
-COPY --from=ghcr.io/astral-sh/uv:0.8.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.8.7 /uv /uvx /bin/
 
 RUN apt-get update && \
     apt-get install -y \
