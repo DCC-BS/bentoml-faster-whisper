@@ -125,15 +125,6 @@ wheels = [
 ]
 
 [[package]]
-name = "appdirs"
-version = "1.4.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d7/d8/05696357e0311f5b5c316d7b95f46c669dd9c15aaeecbb48c7d0aeb88c40/appdirs-1.4.4.tar.gz", hash = "sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41", size = 13470, upload-time = "2020-05-11T07:59:51.037Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/00/2344469e2084fb287c2e0b57b72910309874c3245463acd6cf5e3db69324/appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128", size = 9566, upload-time = "2020-05-11T07:59:49.499Z" },
-]
-
-[[package]]
 name = "asgiref"
 version = "3.8.1"
 source = { registry = "https://pypi.org/simple" }
@@ -184,7 +175,7 @@ wheels = [
 
 [[package]]
 name = "bentoml"
-version = "1.4.19"
+version = "1.4.20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2wsgi" },
@@ -195,7 +186,7 @@ dependencies = [
     { name = "click" },
     { name = "click-option-group" },
     { name = "cloudpickle" },
-    { name = "fs" },
+    { name = "fsspec" },
     { name = "httpx" },
     { name = "httpx-ws" },
     { name = "jinja2" },
@@ -228,9 +219,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/61/e411d7948fbbe2873a73a21c4f5fd605066bdfd0135cdff64b96f0fdafa4/bentoml-1.4.19.tar.gz", hash = "sha256:845e6d344f10a0e28dea5cb960775a51b0239ff48caab50d327d3dac4336d5d6", size = 974405, upload-time = "2025-07-29T03:34:37.551Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/e0/e4f5584a5de436f8f725d36d683ddcf91e0d7ed53b059308bcfe034d72f4/bentoml-1.4.20.tar.gz", hash = "sha256:15480b921cd919e1f52a5a9babe3c4f559dff2b15b1faa99b9546372abcb049b", size = 972403, upload-time = "2025-08-13T08:03:29.319Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/68/4e2c012fc5cac29752dfad449712fc4f4bc79cee57024c55078c7e62336c/bentoml-1.4.19-py3-none-any.whl", hash = "sha256:daf32fd65eb1dbd02f3fbcfd211005418d2323fb64f75057e09b04be08ae6e45", size = 1154233, upload-time = "2025-07-29T03:34:35.07Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/e9/823e1001fbfd1ccc262ea5fabb15f0297b6f47fdaa399130985b30e5276d/bentoml-1.4.20-py3-none-any.whl", hash = "sha256:a3d4a45fca1cd31242549f03ca50f805dafb7ac3bd20fcd4a6d6a685a64477d2", size = 1152171, upload-time = "2025-08-13T08:03:26.849Z" },
 ]
 
 [[package]]
@@ -263,7 +254,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bentoml", specifier = "==1.4.19" },
+    { name = "bentoml", specifier = "==1.4.20" },
     { name = "ctranslate2", specifier = "~=4.6.0" },
     { name = "fastapi", specifier = ">=0.115.5" },
     { name = "faster-whisper", specifier = "==1.2.0" },
@@ -591,26 +582,12 @@ wheels = [
 ]
 
 [[package]]
-name = "fs"
-version = "2.4.16"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "appdirs" },
-    { name = "setuptools" },
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/a9/af5bfd5a92592c16cdae5c04f68187a309be8a146b528eac3c6e30edbad2/fs-2.4.16.tar.gz", hash = "sha256:ae97c7d51213f4b70b6a958292530289090de3a7e15841e108fbe144f069d313", size = 187441, upload-time = "2022-05-02T09:25:54.22Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/5c/a3d95dc1ec6cdeb032d789b552ecc76effa3557ea9186e1566df6aac18df/fs-2.4.16-py2.py3-none-any.whl", hash = "sha256:660064febbccda264ae0b6bace80a8d1be9e089e0a5eb2427b7d517f9a91545c", size = 135261, upload-time = "2022-05-02T09:25:52.363Z" },
-]
-
-[[package]]
 name = "fsspec"
-version = "2025.3.2"
+version = "2025.7.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/45/d8/8425e6ba5fcec61a1d16e41b1b71d2bf9344f1fe48012c2b48b9620feae5/fsspec-2025.3.2.tar.gz", hash = "sha256:e52c77ef398680bbd6a98c0e628fbc469491282981209907bbc8aea76a04fdc6", size = 299281, upload-time = "2025-03-31T15:27:08.524Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/02/0835e6ab9cfc03916fe3f78c0956cfcdb6ff2669ffa6651065d5ebf7fc98/fsspec-2025.7.0.tar.gz", hash = "sha256:786120687ffa54b8283d942929540d8bc5ccfa820deb555a2b5d0ed2b737bf58", size = 304432, upload-time = "2025-07-15T16:05:21.19Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/4b/e0cfc1a6f17e990f3e64b7d941ddc4acdc7b19d6edd51abf495f32b1a9e4/fsspec-2025.3.2-py3-none-any.whl", hash = "sha256:2daf8dc3d1dfa65b6aa37748d112773a7a08416f6c70d96b264c96476ecaf711", size = 194435, upload-time = "2025-03-31T15:27:07.028Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/e0/014d5d9d7a4564cf1c40b5039bc882db69fd881111e03ab3657ac0b218e2/fsspec-2025.7.0-py3-none-any.whl", hash = "sha256:8b012e39f63c7d5f10474de957f3ab793b47b45ae7d39f2fb735f8bbe25c0e21", size = 199597, upload-time = "2025-07-15T16:05:19.529Z" },
 ]
 
 [package.optional-dependencies]
