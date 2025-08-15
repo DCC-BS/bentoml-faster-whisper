@@ -43,7 +43,7 @@ class WhisperModelConfig(BaseModel):
 class FasterWhisperConfig(BaseModel):
     default_model_name: str = "large-v2"
     default_prompt: str = ""
-    default_language: Language = Language.DE
+    default_language: Language | None = None
     default_response_format: ResponseFormat = ResponseFormat.JSON
     default_temperature: list[float] = [
         0.0,
