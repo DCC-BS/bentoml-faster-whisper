@@ -28,7 +28,7 @@ def _process_empty_language(language: None | Language | str | bytes) -> Language
             return Language(value=faster_whisper_config.default_language)
 
     if language == "" or language is None:
-        return Language(value=faster_whisper_config.default_language)
+        return None
 
     if isinstance(language, Language):
         return language
