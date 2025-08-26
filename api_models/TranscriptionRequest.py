@@ -142,7 +142,7 @@ class TranscriptionRequest(BaseModel):
         default=False,
         description="If True, the model will attempt to separate speakers in the audio.",
     )
-    diarization_speaker_count: Annotated[int, Ge(2)] | None = Field(
+    diarization_speaker_count: Annotated[int, Ge(1), Le(6)] | None = Field(
         default=None,
         description="The number of speakers to separate in the audio. This argument is only used if diarization is True.",
     )
