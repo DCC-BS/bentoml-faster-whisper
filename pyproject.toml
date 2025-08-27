@@ -6,10 +6,13 @@ dependencies = [
     "bentoml==1.4.22",
     "fastapi>=0.115.5",
     "faster-whisper==1.2.0",
-    "torch>=2.6.0",
+    "torch>=2.5.1",
+    "torchaudio>=2.5.1",
+    "transformers>=4.48.0",
     "pydantic~=2.11.0",
     "requests~=2.32.3",
-    "ctranslate2~=4.6.0",
+    "ctranslate2<4.5.0",
+    "onnxruntime>=1.19",
     "python-dotenv~=1.1.0",
     "pytest~=8.4.0",
     "uvicorn~=0.35.0",
@@ -17,6 +20,7 @@ dependencies = [
     "pyannote-audio>=3.3.2",
     "loguru>=0.7.3",
     "numpy>=2.2.0",
+    "sox>=1.5.0",
 ]
 
 [tool.bentoml.build]
@@ -31,15 +35,15 @@ stage = "production"
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchvision = [
-  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [dependency-groups]

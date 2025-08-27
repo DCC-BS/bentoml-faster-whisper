@@ -33,6 +33,7 @@ from logger import configure_logging
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo
 
+
 logger = logging.getLogger(__name__)
 
 fastapi = FastAPI()

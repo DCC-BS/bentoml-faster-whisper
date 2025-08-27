@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
 ENV TZ=Europe/Zurich
 ENV LANG=de_CH.UTF-8
@@ -9,6 +9,7 @@ RUN apt-get update && \
     apt-get install -y \
     ffmpeg \
     git \
+    libsox-dev \
     && apt clean
 
 WORKDIR /app
