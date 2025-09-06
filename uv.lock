@@ -175,7 +175,7 @@ wheels = [
 
 [[package]]
 name = "bentoml"
-version = "1.4.21"
+version = "1.4.23"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2wsgi" },
@@ -219,9 +219,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/a0/f7d34bd7a530aa593b5631731fbc3946f7c80b81ad9f3ab1f8286ed02048/bentoml-1.4.21.tar.gz", hash = "sha256:48f8c23e6f9a50e2cc49c3399757fe6f5732aad94e654a800f70b3a2f3377659", size = 972423, upload-time = "2025-08-14T01:08:16.79Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/33/45477628f48da418052f86653e09f3f334e323ca2b5417b5c417a1c92ca5/bentoml-1.4.23.tar.gz", hash = "sha256:1a134a706bf715232a5327910bc50202877d08a404de1f314cf3767765e8fb4c", size = 973773, upload-time = "2025-09-05T00:52:20.83Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/27/e4/6003b54f3de6ddc8dd577a2cf16ee8179d33af3c83eb4d625c8432c9fbd6/bentoml-1.4.21-py3-none-any.whl", hash = "sha256:c29db442e76ad64afe0d849f559927fbd0b9405ea97592808aaa27662c73fa33", size = 1152203, upload-time = "2025-08-14T01:08:14.352Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/0e/8b9b30e0922c30973f3e13a35b94c1e23b5f3e69bb7a71e4310be0ab7b93/bentoml-1.4.23-py3-none-any.whl", hash = "sha256:be71f9baa6676417c4b73ea39fa68b40b39dc267ecd446f818e6d28e2cf9b34d", size = 1154739, upload-time = "2025-09-05T00:52:18.781Z" },
 ]
 
 [[package]]
@@ -254,7 +254,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bentoml", specifier = "==1.4.21" },
+    { name = "bentoml", specifier = "==1.4.23" },
     { name = "ctranslate2", specifier = "~=4.6.0" },
     { name = "fastapi", specifier = ">=0.115.5" },
     { name = "faster-whisper", specifier = "==1.2.0" },
