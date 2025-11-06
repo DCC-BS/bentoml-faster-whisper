@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:13.0.2-cudnn-runtime-ubuntu22.04
 
 ENV TZ=Europe/Zurich
 ENV LANG=de_CH.UTF-8
