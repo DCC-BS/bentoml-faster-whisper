@@ -9,7 +9,7 @@
 
 - If you want to test the project locally, install FFmpeg on your system.
 - Install the package manager uv ([docs](https://docs.astral.sh/uv/getting-started/installation/)).
-- Python 3.12 is recommended.
+- Python 3.13 is recommended.
 
 ## Install dependencies
 
@@ -22,7 +22,11 @@ uv sync
 
 ## Run the BentoML Service
 
-We have defined a BentoML Service in `service.py`. Run `bentoml serve` in your project directory to start the Service.
+We have defined a BentoML Service in `service.py`. Use uv to start the service in your project directory:
+
+```bash
+uv run bentoml serve service:FasterWhisper
+```
 
 2024-01-18T09:01:15+0800 [INFO] [cli] Starting production HTTP BentoServer from "service:FasterWhisper" listening on http://localhost:3000 (Press CTRL+C to quit)
 
@@ -54,7 +58,7 @@ Further examples (task, streaming) how to programmatically interact with the fas
 
 To debug through the FasterWhisper service, you can run the service with the following script: 
 ```bash
-python launch.py
+uv run python launch.py
 ```
 
 ## Deploy
@@ -66,13 +70,13 @@ For custom deployment in your own infrastructure, you can build and containerize
 docker build -t faster_whisper:latest .
 ```
 
-### Run Container
-You can run the prebuilt docker image with the following command:
+### Run Container with NVIDIA GPU Support
+You can run the prebuilt docker image with NVIDIA GPU support using the following command:
 ```bash
-docker run -p 3000:3000 faster_whisper:<IMAGE-TAG>
+docker run --gpus all -p 50001:50001 faster_whisper:<IMAGE-TAG>
 ```
 
-You can use the compose.yaml file to build an image and run the container:
+You can use the compose.yaml file to build an image and run the container with GPU support:
 ```bash
 docker-compose up --build
 ```
