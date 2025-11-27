@@ -4,6 +4,8 @@
   "extends": [
     "config:recommended"
   ],
+  "internalChecksFilter": "strict",
+  "minimumReleaseAge": "14 days",
   "packageRules": [
     {
       "matchPackageNames": ["python"],
