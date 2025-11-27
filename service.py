@@ -27,8 +27,8 @@ from api_models.TranslationRequest import TranslationRequest
 from core import Segment
 from handlers.fast_whipser_handler import FasterWhisperHandler
 from handlers.progress_handler import ProgressHandler
+from helpers.logger import configure_logging
 from helpers.timing import measure_processing_time
-from logger import configure_logging
 
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo

@@ -3,7 +3,7 @@ import functools
 import time
 from typing import Callable
 
-from utils import (
+from helpers.utils import (
     get_audio_duration,
     input_audio_length_histogram,
     realtime_factor_histogram,
