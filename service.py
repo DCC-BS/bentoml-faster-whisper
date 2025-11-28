@@ -27,8 +27,9 @@ from api_models.TranslationRequest import TranslationRequest
 from core import Segment
 from handlers.fast_whipser_handler import FasterWhisperHandler
 from handlers.progress_handler import ProgressHandler
+from helpers.logger import configure_logging
 from helpers.timing import measure_processing_time
-from logger import configure_logging
+from helpers.transcription_cleaner import clean_transcription_segments
 
 if TYPE_CHECKING:
     from huggingface_hub.hf_api import ModelInfo
@@ -139,6 +140,7 @@ class FasterWhisper:
             result.append(segment)
 
         self.progress_handler.remove_progress(request.progress_id)
+        result = clean_transcription_segments(result, transcription_info)
         return segments_to_response(result, transcription_info, request.response_format)
 
     @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)

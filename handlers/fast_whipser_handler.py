@@ -1,7 +1,6 @@
 from http import HTTPStatus
 
 from bentoml.exceptions import BentoMLException
-from fastapi import HTTPException
 
 from api_models.enums import ResponseFormat, Task
 from api_models.input_models import (
@@ -15,8 +14,9 @@ from api_models.TranscriptionRequest import TranscriptionRequest
 from config import WhisperModelConfig
 from core import Segment
 from diarization_service import DiarizationService
+from helpers.transcription_cleaner import clean_transcription_segments
+from helpers.whiper_diarization_merger import merge_whipser_diarization
 from model_manager import WhisperModelManager
-from whiper_diarization_merger import merge_whipser_diarization
 
 
 class FasterWhisperHandler:
@@ -36,7 +36,7 @@ class FasterWhisperHandler:
         )
 
         segments, transcription_info = self.prepare_audio_segments(request)
-
+        segments = clean_transcription_segments(segments, transcription_info)
         return segments_to_response(segments, transcription_info, request.response_format)
 
     def translate_audio(

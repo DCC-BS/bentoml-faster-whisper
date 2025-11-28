@@ -11,12 +11,17 @@ dependencies = [
     "requests~=2.32.3",
     "ctranslate2~=4.6.0",
     "python-dotenv~=1.2.0",
-    "pytest~=9.0.0",
     "uvicorn~=0.38.0",
     "pydub>=0.25.1",
     "pyannote-audio>=3.3.2",
     "loguru>=0.7.3",
     "numpy>=2.2.0",
+]
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0",
+    "pytest~=9.0.0",
+    "openai>=1.65.1",
 ]
 
 [tool.bentoml.build]
@@ -41,12 +46,6 @@ torchvision = [
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
-
-[dependency-groups]
-dev = [
-    "mypy>=1.15.0",
-    "openai>=1.65.1",
-]
 
 [tool.ruff]
 target-version = "py312"
