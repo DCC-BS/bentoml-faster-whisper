@@ -16,6 +16,4 @@ def clean_transcription_segments(
         if detect_hallucinations(segment.text.strip(), language):
             continue
         segment.text = segment.text.replace("ß", "ss")
-        segment.text = segment.text.replace("ß", "ss")
-        yield segment
         yield segment
