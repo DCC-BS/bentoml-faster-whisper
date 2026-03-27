@@ -51,3 +51,7 @@ explicit = true
 target-version = "py312"
 line-length = 120
 fix = true
+
+[tool.uv]
+exclude-newer = "1 week"
+exclude-newer-package = { dcc-backend-common = "P1D" }
