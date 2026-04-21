@@ -106,7 +106,10 @@ class FasterWhisper:
     async def batch_transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
-        return await self.batch.batch_transcribe([request])
+        results = await self.batch.batch_transcribe([request])
+        if not results:
+            raise RuntimeError("Batch transcription returned no results")
+        return results[0]
 
     @bentoml.task(
         route="/v1/audio/transcriptions/task",
@@ -181,7 +184,7 @@ class FasterWhisper:
     @fastapi.get("/models/{model_name:path}")
     def get_model(
         self,
-        model_name=Annotated[str, FastAPIPath(example="Systran/faster-distil-whisper-large-v2")],
+        model_name: Annotated[str, FastAPIPath(examples=["Systran/faster-distil-whisper-large-v2"])],
     ) -> ModelObject:
         models = huggingface_hub.list_models(
             search=str(model_name),

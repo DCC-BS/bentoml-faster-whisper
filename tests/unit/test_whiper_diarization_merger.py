@@ -137,8 +137,8 @@ def test_segment_speaker_consistent_with_words_at_boundary():
     assert result[0].words is not None
     assert result[0].words[0].speaker == "A"
     assert result[0].words[1].speaker == "B"
-    # Segment speaker must agree with majority word speaker (tied → A wins by duration order).
-    assert result[0].speaker == result[0].words[0].speaker or result[0].speaker == result[0].words[1].speaker
+    # Tied duration → A wins because it is inserted first into the duration dict (dict insertion order, Python 3.7+).
+    assert result[0].speaker == "A"
 
 
 def test_segment_speaker_matches_dominant_word_speaker():

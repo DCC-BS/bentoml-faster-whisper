@@ -2,8 +2,10 @@ import contextlib
 import os
 import subprocess
 import tempfile
-from typing import Iterable
+from pathlib import Path
+from typing import Iterable, Iterator
 
+import pyannote.audio as _pyannote_audio
 import torch
 from loguru import logger
 from pyannote.audio import Pipeline
@@ -28,24 +30,28 @@ class DiarizationSegment:
 
 
 @contextlib.contextmanager
-def _as_wav(audio_path: str):
+def _as_wav(audio_path: str) -> Iterator[str]:
     # MP3/FLAC headers report duration imprecisely; convert to WAV so pyannote
     # gets an exact sample count without loading the whole file into RAM.
-    if audio_path.endswith(".wav"):
+    if Path(audio_path).suffix.lower() == ".wav":
         yield audio_path
         return
 
     fd, tmp_path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     try:
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1", tmp_path],
-            check=True,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1", tmp_path],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error("ffmpeg conversion failed: {}", e.stderr.decode(errors="replace"))
+            raise
         yield tmp_path
     finally:
-        os.unlink(tmp_path)
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 class DiarizationService:
@@ -67,16 +73,24 @@ class DiarizationService:
             "pyannote/speaker-diarization-community-1",
             token=hf_token or None,
         )
-        assert pipeline is not None, "Failed to load diarization pipeline"
+        if pipeline is None:
+            raise RuntimeError("Failed to load diarization pipeline")
         self.pipeline = pipeline
 
+        _version = getattr(_pyannote_audio, "__version__", "unknown")
+        logger.info("pyannote.audio version: {}", _version)
         try:
             self.pipeline._models.segmentation_batch_size = 4  # type: ignore
             self.pipeline._models.embedding_batch_size = 4  # type: ignore
         except AttributeError:
-            logger.warning("Could not set batch sizes on pipeline._models — skipping")
+            logger.warning(
+                "pipeline._models batch-size attributes not found (pyannote.audio {}); "
+                "private API may have changed — batch sizes not configured",
+                _version,
+            )
 
-        self.pipeline.to(torch.device("cuda"))
+        if torch.cuda.is_available():
+            self.pipeline.to(torch.device("cuda"))
 
     @logger.catch(reraise=True)
     def diarize(self, audio_path: str, num_speaker: int | None = None) -> Iterable[DiarizationSegment]:
