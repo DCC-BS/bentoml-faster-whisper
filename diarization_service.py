@@ -1,8 +1,10 @@
+import contextlib
 import os
+import subprocess
+import tempfile
 from typing import Iterable
 
 import torch
-import torchaudio
 from loguru import logger
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
@@ -23,6 +25,32 @@ class DiarizationSegment:
 
     def __repr__(self):
         return self.__str__()
+
+
+@contextlib.contextmanager
+def _as_wav(audio_path: str):
+    """
+    Yield a WAV file path suitable for pyannote.
+
+    WAV files are yielded as-is. Other formats (e.g. MP3) are converted via
+    ffmpeg to a temp 16kHz mono WAV so pyannote gets an exact sample count.
+    The temp file is deleted on exit.
+    """
+    if audio_path.endswith(".wav"):
+        yield audio_path
+        return
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1", tmp_path],
+            check=True,
+            capture_output=True,
+        )
+        yield tmp_path
+    finally:
+        os.unlink(tmp_path)
 
 
 class DiarizationService:
@@ -74,8 +102,9 @@ class DiarizationService:
         if num_speaker is not None and num_speaker <= 0:
             raise ValueError("num_speaker must be a positive integer or None.")
 
-        waveform, sample_rate = torchaudio.load(audio_path)
-        output = self.pipeline({"waveform": waveform, "sample_rate": sample_rate}, num_speakers=num_speaker)
+        with _as_wav(audio_path) as wav_path:
+            output = self.pipeline(wav_path, num_speakers=num_speaker)
+
         logger.info("Diarization completed")
 
         for turn, speaker in output.speaker_diarization:

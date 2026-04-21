@@ -1,4 +1,6 @@
-from unittest.mock import MagicMock, patch
+import unittest.mock
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from pyannote.core import Segment
@@ -47,8 +49,7 @@ def test_diarize_returns_segments(tmp_path):
     audio_file = tmp_path / "audio.wav"
     audio_file.touch()
 
-    with patch("torchaudio.load", return_value=(MagicMock(), 16000)):
-        result = list(sut.diarize(str(audio_file)))
+    result = list(sut.diarize(str(audio_file)))
 
     assert len(result) == 2
     assert result[0].start == 0.0
@@ -64,8 +65,7 @@ def test_diarize_passes_num_speakers_to_pipeline(tmp_path):
     audio_file = tmp_path / "audio.wav"
     audio_file.touch()
 
-    with patch("torchaudio.load", return_value=(MagicMock(), 16000)):
-        list(sut.diarize(str(audio_file), num_speaker=2))
+    list(sut.diarize(str(audio_file), num_speaker=2))
 
     sut.pipeline.assert_called_once()  # type: ignore[union-attr]
     _, kwargs = sut.pipeline.call_args  # type: ignore[union-attr]
@@ -77,12 +77,49 @@ def test_diarize_passes_none_num_speakers_by_default(tmp_path):
     audio_file = tmp_path / "audio.wav"
     audio_file.touch()
 
-    with patch("torchaudio.load", return_value=(MagicMock(), 16000)):
-        list(sut.diarize(str(audio_file)))
+    list(sut.diarize(str(audio_file)))
 
     sut.pipeline.assert_called_once()  # type: ignore[union-attr]
     _, kwargs = sut.pipeline.call_args  # type: ignore[union-attr]
     assert kwargs["num_speakers"] is None
+
+
+def test_diarize_passes_wav_path_directly(tmp_path):
+    """WAV files are passed directly to the pipeline — no conversion, no waveform in RAM."""
+    sut = _make_service_with_mock_pipeline([])
+    audio_file = tmp_path / "audio.wav"
+    audio_file.touch()
+
+    list(sut.diarize(str(audio_file)))
+
+    sut.pipeline.assert_called_once()  # type: ignore[union-attr]
+    args, _ = sut.pipeline.call_args  # type: ignore[union-attr]
+    assert args[0] == str(audio_file)
+
+
+def test_diarize_converts_mp3_to_wav(tmp_path):
+    """MP3 files are converted to a temp WAV before passing to the pipeline."""
+    sut = _make_service_with_mock_pipeline([])
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.touch()
+
+    with unittest.mock.patch("subprocess.run") as mock_run:
+        # Make ffmpeg appear to succeed and create a temp WAV
+        def fake_ffmpeg(*args, **kwargs):
+            # Write the temp file that _as_wav creates
+            tmp_wav = args[0][args[0].index("-i") + 2 + 1]  # arg after output placeholder
+            # Actually grab the output path from the command
+            cmd = args[0]
+            out_path = cmd[-1]
+            Path(out_path).touch()
+
+        mock_run.side_effect = fake_ffmpeg
+        list(sut.diarize(str(audio_file)))
+
+    sut.pipeline.assert_called_once()  # type: ignore[union-attr]
+    args, _ = sut.pipeline.call_args  # type: ignore[union-attr]
+    assert args[0].endswith(".wav")
+    assert args[0] != str(audio_file)
 
 
 def test_diarization_segment_label_equals_speaker():
