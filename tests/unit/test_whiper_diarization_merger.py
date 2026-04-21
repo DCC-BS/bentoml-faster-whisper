@@ -2,7 +2,7 @@ import pytest
 from pyannote.core import Segment
 
 from diarization_service import DiarizationSegment
-from whiper_diarization_merger import merge_whipser_diarization
+from helpers.whiper_diarization_merger import merge_whipser_diarization
 
 
 class DummyWord:
@@ -30,7 +30,7 @@ def test_merge_whipser_diarization():
         DiarizationSegment(segment=Segment(6, 10), speaker="B", label="B"),
     ]
 
-    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker == "A"
     assert result[1].speaker == "B"
@@ -38,9 +38,7 @@ def test_merge_whipser_diarization():
 
 def test_merge_whipser_diarization_with_words():
     whisper_segments = [
-        DummyWhisperSegment(
-            start=0, end=5, words=[DummyWord(start=1, end=2), DummyWord(start=3, end=4)]
-        ),
+        DummyWhisperSegment(start=0, end=5, words=[DummyWord(start=1, end=2), DummyWord(start=3, end=4)]),
         DummyWhisperSegment(
             start=6,
             end=10,
@@ -52,12 +50,14 @@ def test_merge_whipser_diarization_with_words():
         DiarizationSegment(segment=Segment(6, 10), label="label2", speaker="B"),
     ]
 
-    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker == "A"
     assert result[1].speaker == "B"
+    assert result[0].words is not None
     assert result[0].words[0].speaker == "A"
     assert result[0].words[1].speaker == "A"
+    assert result[1].words is not None
     assert result[1].words[0].speaker == "B"
     assert result[1].words[1].speaker == "B"
 
@@ -89,7 +89,7 @@ def test_diarization_segments_consumed_incrementally():
             yield segment
 
     # Process the first segment
-    list(merge_whipser_diarization([whisper_segments[0]], segment_generator()))
+    list(merge_whipser_diarization([whisper_segments[0]], segment_generator()))  # type: ignore
     # Should have consumed first 2 segments (0-3, 3-5) and peeked at the third
     assert consumed_count == 3
 

@@ -30,6 +30,8 @@ class DiarizationService:
     A service for speaker diarization using the pyannote.audio library.
     """
 
+    pipeline: Pipeline
+
     @logger.catch(reraise=True)
     def load(self):
         """
@@ -37,15 +39,20 @@ class DiarizationService:
         The pipeline is sent to the GPU if available.
         """
         logger.info("Loading speaker diarization pipeline")
-        self.pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            use_auth_token=os.getenv("HF_AUTH_TOKEN"),
+        hf_token = os.getenv("HF_AUTH_TOKEN")
+        pipeline = Pipeline.from_pretrained(  # type: ignore[call-arg]
+            "pyannote/speaker-diarization-community-1",
+            token=hf_token or None,
         )
+        assert pipeline is not None, "Failed to load diarization pipeline"
+        self.pipeline = pipeline
 
-        self.pipeline._models.segmentation_batch_size = 4
-        self.pipeline._models.embedding_batch_size = 4
+        try:
+            self.pipeline._models.segmentation_batch_size = 4  # type: ignore
+            self.pipeline._models.embedding_batch_size = 4  # type: ignore
+        except AttributeError:
+            logger.warning("Could not set batch sizes on pipeline._models — skipping")
 
-        # send pipeline to GPU (when available)
         self.pipeline.to(torch.device("cuda"))
 
     @logger.catch(reraise=True)
@@ -61,15 +68,15 @@ class DiarizationService:
             Pipeline: The diarization pipeline with the results.
         """
 
-        # check if file exists
         if not os.path.isfile(audio_path):
             raise FileNotFoundError(f"File not found: {audio_path}")
 
         if num_speaker is not None and num_speaker <= 0:
             raise ValueError("num_speaker must be a positive integer or None.")
-        wafe_form, sample_rate = torchaudio.load(audio_path)
-        segments = self.pipeline({"waveform": wafe_form, "sample_rate": sample_rate}, num_speakers=num_speaker)
+
+        waveform, sample_rate = torchaudio.load(audio_path)
+        output = self.pipeline({"waveform": waveform, "sample_rate": sample_rate}, num_speakers=num_speaker)
         logger.info("Diarization completed")
 
-        for segment in segments.itertracks(yield_label=True):
-            yield DiarizationSegment(segment[0], segment[1], segment[2])
+        for turn, speaker in output.speaker_diarization:
+            yield DiarizationSegment(turn, speaker, speaker)

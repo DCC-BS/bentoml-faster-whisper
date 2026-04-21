@@ -38,11 +38,7 @@ class Word(BaseModel):
     @classmethod
     def common_prefix(cls, a: list[Word], b: list[Word]) -> list[Word]:
         i = 0
-        while (
-            i < len(a)
-            and i < len(b)
-            and canonicalize_word(a[i].word) == canonicalize_word(b[i].word)
-        ):
+        while i < len(a) and i < len(b) and canonicalize_word(a[i].word) == canonicalize_word(b[i].word):
             i += 1
         return a[:i]
 
@@ -62,9 +58,7 @@ class Segment(BaseModel):
     speaker: str | None = None
 
     @classmethod
-    def from_faster_whisper_segments(
-        cls, segments: Iterable[faster_whisper.transcribe.Segment]
-    ) -> Iterable[Segment]:
+    def from_faster_whisper_segments(cls, segments: Iterable[faster_whisper.transcribe.Segment]) -> Iterable[Segment]:
         for segment in segments:
             yield cls(
                 id=segment.id,
@@ -73,7 +67,7 @@ class Segment(BaseModel):
                 end=segment.end,
                 text=segment.text,
                 tokens=segment.tokens,
-                temperature=segment.temperature,
+                temperature=segment.temperature if segment.temperature is not None else 0.0,
                 avg_logprob=segment.avg_logprob,
                 compression_ratio=segment.compression_ratio,
                 no_speech_prob=segment.no_speech_prob,
@@ -113,9 +107,7 @@ class Transcription:
         return self.end - self.start
 
     def after(self, seconds: float) -> Transcription:
-        return Transcription(
-            words=[word for word in self.words if word.start > seconds]
-        )
+        return Transcription(words=[word for word in self.words if word.start > seconds])
 
     def extend(self, words: list[Word]) -> None:
         self._ensure_no_word_overlap(words)
@@ -130,9 +122,7 @@ class Transcription:
                 )
         for i in range(1, len(words)):
             if words[i].start + word_timestamp_error_margin <= words[i - 1].end:
-                raise ValueError(
-                    f"Words overlap: {words[i - 1]} and {words[i]}. All words: {words}"
-                )
+                raise ValueError(f"Words overlap: {words[i - 1]} and {words[i]}. All words: {words}")
 
 
 def is_eos(text: str) -> bool:
@@ -203,10 +193,6 @@ def canonicalize_word(text: str) -> str:
 
 def common_prefix(a: list[Word], b: list[Word]) -> list[Word]:
     i = 0
-    while (
-        i < len(a)
-        and i < len(b)
-        and canonicalize_word(a[i].word) == canonicalize_word(b[i].word)
-    ):
+    while i < len(a) and i < len(b) and canonicalize_word(a[i].word) == canonicalize_word(b[i].word):
         i += 1
     return a[:i]

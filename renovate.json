@@ -1,47 +1,49 @@
 {
-  "forkProcessing": "enabled",
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "lockFileMaintenance": {
-    "enabled": true
-  },
+  "dependencyDashboard": true,
   "extends": [
     "config:recommended"
   ],
+  "forkProcessing": "enabled",
+  "ignoreTests": true,
   "internalChecksFilter": "strict",
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "minimumReleaseAge": "14 days",
   "packageRules": [
     {
-      "matchPackageNames": ["python"],
-      "enabled": false
+      "enabled": false,
+      "matchPackageNames": [
+        "python"
+      ]
     },
     {
+      "automerge": true,
       "matchUpdateTypes": [
         "minor",
         "patch"
-      ],
-      "automerge": true
+      ]
     },
     {
+      "automerge": true,
       "matchDepTypes": [
         "optionalDependencies",
         "devDependencies"
-      ],
-      "automerge": true
+      ]
     },
     {
-      "matchFileNames": [
-        ".devcontainer/devcontainer.json"
-      ],
+      "automerge": true,
       "groupName": "devcontainer",
       "labels": [
         "devcontainer"
       ],
-      "automerge": true
+      "matchFileNames": [
+        ".devcontainer/devcontainer.json"
+      ]
     }
   ],
-  "timezone": "Europe/Zurich",
   "platformAutomerge": true,
-  "dependencyDashboard": true,
-  "ignoreTests": true,
-  "prCreation": "immediate"
+  "prCreation": "immediate",
+  "timezone": "Europe/Zurich"
 }

@@ -58,9 +58,7 @@ def merge_whipser_diarization(
     diarization_segments_peekable = IterWithPeek(diarization_segments)
 
     for seg in whisper_segments:
-        candidates = _pack_segements_in_range(
-            diarization_segments_peekable, seg.start, seg.end
-        )
+        candidates = _pack_segements_in_range(diarization_segments_peekable, seg.start, seg.end)
 
         # Create a copy of the candidates for the words
         seg_candidates, word_candidates_it = itertools.tee(candidates)
@@ -76,9 +74,7 @@ def merge_whipser_diarization(
         # Process words with the same approach
         if seg.words is not None:  # Start from the same window position
             for word in seg.words:
-                current_word_candidates = _pack_segements_in_range(
-                    word_candidates, word.start, word.end
-                )
+                current_word_candidates = _pack_segements_in_range(word_candidates, word.start, word.end)
                 best_word_speaker = _find_best_speaker(
                     current_word_candidates,
                     word.start,
