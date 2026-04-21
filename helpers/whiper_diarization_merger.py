@@ -1,4 +1,4 @@
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 from core import Segment as WhisperSegment
 from diarization_service import DiarizationSegment
@@ -44,7 +44,7 @@ def _find_best_speaker(
     return best_speaker
 
 
-def _majority_speaker(words: list, word_speakers: list[Optional[str]]) -> Optional[str]:
+def _majority_speaker(words: list[Any], word_speakers: list[Optional[str]]) -> Optional[str]:
     """Return the speaker covering the most total word duration."""
     duration: dict[str, float] = {}
     for word, speaker in zip(words, word_speakers):

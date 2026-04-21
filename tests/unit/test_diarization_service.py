@@ -9,7 +9,6 @@ from diarization_service import DiarizationSegment, DiarizationService
 
 
 def _make_service_with_mock_pipeline(turns: list[tuple]) -> DiarizationService:
-    """Build a DiarizationService with a mocked pipeline that returns the given (turn, speaker) pairs."""
     mock_output = MagicMock()
     mock_output.speaker_diarization = turns
 
@@ -52,11 +51,11 @@ def test_diarize_returns_segments(tmp_path):
     result = list(sut.diarize(str(audio_file)))
 
     assert len(result) == 2
-    assert result[0].start == 0.0
-    assert result[0].end == 3.0
+    assert result[0].start == pytest.approx(0.0)
+    assert result[0].end == pytest.approx(3.0)
     assert result[0].speaker == "SPEAKER_00"
-    assert result[1].start == 3.5
-    assert result[1].end == 7.0
+    assert result[1].start == pytest.approx(3.5)
+    assert result[1].end == pytest.approx(7.0)
     assert result[1].speaker == "SPEAKER_01"
 
 
@@ -106,12 +105,7 @@ def test_diarize_converts_mp3_to_wav(tmp_path):
     with unittest.mock.patch("subprocess.run") as mock_run:
         # Make ffmpeg appear to succeed and create a temp WAV
         def fake_ffmpeg(*args, **kwargs):
-            # Write the temp file that _as_wav creates
-            tmp_wav = args[0][args[0].index("-i") + 2 + 1]  # arg after output placeholder
-            # Actually grab the output path from the command
-            cmd = args[0]
-            out_path = cmd[-1]
-            Path(out_path).touch()
+            Path(args[0][-1]).touch()
 
         mock_run.side_effect = fake_ffmpeg
         list(sut.diarize(str(audio_file)))
@@ -125,5 +119,5 @@ def test_diarize_converts_mp3_to_wav(tmp_path):
 def test_diarization_segment_label_equals_speaker():
     seg = DiarizationSegment(Segment(1.0, 2.0), label="SPEAKER_00", speaker="SPEAKER_00")
     assert seg.label == seg.speaker
-    assert seg.start == 1.0
-    assert seg.end == 2.0
+    assert seg.start == pytest.approx(1.0)
+    assert seg.end == pytest.approx(2.0)

@@ -29,13 +29,8 @@ class DiarizationSegment:
 
 @contextlib.contextmanager
 def _as_wav(audio_path: str):
-    """
-    Yield a WAV file path suitable for pyannote.
-
-    WAV files are yielded as-is. Other formats (e.g. MP3) are converted via
-    ffmpeg to a temp 16kHz mono WAV so pyannote gets an exact sample count.
-    The temp file is deleted on exit.
-    """
+    # MP3/FLAC headers report duration imprecisely; convert to WAV so pyannote
+    # gets an exact sample count without loading the whole file into RAM.
     if audio_path.endswith(".wav"):
         yield audio_path
         return
