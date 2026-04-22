@@ -22,9 +22,7 @@ def test_translate_standard_case(faster_whisper_service):
     file = Path("./tests/assets/example_audio_german.mp3")
 
     # when
-    transcription = faster_whisper_service.translate(
-        **_extend_params(file=file, response_format=ResponseFormat.JSON)
-    )
+    transcription = faster_whisper_service.translate(**_extend_params(file=file, response_format=ResponseFormat.JSON))
 
     # then
     assert transcription is not None

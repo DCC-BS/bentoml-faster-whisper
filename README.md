@@ -56,7 +56,7 @@ Further examples (task, streaming) how to programmatically interact with the fas
 
 ### Local Development
 
-To debug through the FasterWhisper service, you can run the service with the following script: 
+To debug through the FasterWhisper service, you can run the service with the following script:
 ```bash
 uv run python launch.py
 ```

@@ -2,7 +2,7 @@ from typing import Annotated
 
 from annotated_types import Ge, Le
 from bentoml.exceptions import InvalidArgument
-from huggingface_hub import ModelInfo
+from huggingface_hub.hf_api import ModelInfo
 from pydantic import BaseModel, BeforeValidator, Field
 
 from api_models.enums import ResponseFormat, TimestampGranularity
@@ -121,8 +121,7 @@ def validate_timestamp_granularities(response_format, timestamp_granularities, d
 
     if "word" not in timestamp_granularities and response_format == ResponseFormat.VERBOSE_JSON:
         raise InvalidArgument(
-            f"timestamp_granularities must contain 'word' when response_format "
-            f"is set to {ResponseFormat.VERBOSE_JSON}"
+            f"timestamp_granularities must contain 'word' when response_format is set to {ResponseFormat.VERBOSE_JSON}"
         )
 
     if response_format == ResponseFormat.JSON_DIARZED and not diarization:

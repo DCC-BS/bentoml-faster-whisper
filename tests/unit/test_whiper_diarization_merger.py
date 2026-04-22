@@ -2,7 +2,7 @@ import pytest
 from pyannote.core import Segment
 
 from diarization_service import DiarizationSegment
-from whiper_diarization_merger import merge_whipser_diarization
+from helpers.whiper_diarization_merger import merge_whipser_diarization
 
 
 class DummyWord:
@@ -30,7 +30,7 @@ def test_merge_whipser_diarization():
         DiarizationSegment(segment=Segment(6, 10), speaker="B", label="B"),
     ]
 
-    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker == "A"
     assert result[1].speaker == "B"
@@ -38,9 +38,7 @@ def test_merge_whipser_diarization():
 
 def test_merge_whipser_diarization_with_words():
     whisper_segments = [
-        DummyWhisperSegment(
-            start=0, end=5, words=[DummyWord(start=1, end=2), DummyWord(start=3, end=4)]
-        ),
+        DummyWhisperSegment(start=0, end=5, words=[DummyWord(start=1, end=2), DummyWord(start=3, end=4)]),
         DummyWhisperSegment(
             start=6,
             end=10,
@@ -52,12 +50,14 @@ def test_merge_whipser_diarization_with_words():
         DiarizationSegment(segment=Segment(6, 10), label="label2", speaker="B"),
     ]
 
-    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker == "A"
     assert result[1].speaker == "B"
+    assert result[0].words is not None
     assert result[0].words[0].speaker == "A"
     assert result[0].words[1].speaker == "A"
+    assert result[1].words is not None
     assert result[1].words[0].speaker == "B"
     assert result[1].words[1].speaker == "B"
 
@@ -89,7 +89,7 @@ def test_diarization_segments_consumed_incrementally():
             yield segment
 
     # Process the first segment
-    list(merge_whipser_diarization([whisper_segments[0]], segment_generator()))
+    list(merge_whipser_diarization([whisper_segments[0]], segment_generator()))  # type: ignore
     # Should have consumed first 2 segments (0-3, 3-5) and peeked at the third
     assert consumed_count == 3
 
@@ -113,6 +113,57 @@ def test_diarization_segments_consumed_incrementally():
     assert result[0].speaker in ("A", "B")  # First segment overlaps with both A and B
     assert result[1].speaker in ("A", "B")  # Second segment overlaps with both A and B
     assert result[2].speaker == "C"  # Third segment overlaps only with C
+
+
+def test_segment_speaker_consistent_with_words_at_boundary():
+    """Segment speaker must match the majority word speaker, not raw segment overlap."""
+    # Segment spans speaker change: A covers [3,5], B covers [5,7] — equal time.
+    # Without the fix, A wins the tie at segment level while B words exist.
+    # With the fix, segment speaker is derived from word majority.
+    whisper_segments = [
+        DummyWhisperSegment(
+            start=3,
+            end=7,
+            words=[DummyWord(start=3, end=5), DummyWord(start=5, end=7)],
+        )
+    ]
+    diarization_segments = [
+        DiarizationSegment(segment=Segment(0, 5), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(5, 10), speaker="B", label="B"),
+    ]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].words is not None
+    assert result[0].words[0].speaker == "A"
+    assert result[0].words[1].speaker == "B"
+    # Tied duration → A wins because it is inserted first into the duration dict (dict insertion order, Python 3.7+).
+    assert result[0].speaker == "A"
+
+
+def test_segment_speaker_matches_dominant_word_speaker():
+    """When most words belong to B, segment speaker must be B even if A starts first."""
+    whisper_segments = [
+        DummyWhisperSegment(
+            start=0,
+            end=10,
+            words=[
+                DummyWord(start=0, end=2),  # A
+                DummyWord(start=2, end=10),  # B (much longer)
+            ],
+        )
+    ]
+    diarization_segments = [
+        DiarizationSegment(segment=Segment(0, 2), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(2, 10), speaker="B", label="B"),
+    ]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].words is not None
+    assert result[0].words[0].speaker == "A"
+    assert result[0].words[1].speaker == "B"
+    assert result[0].speaker == "B"  # B dominates by word duration
 
 
 if __name__ == "__main__":

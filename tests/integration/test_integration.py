@@ -31,7 +31,7 @@ class TestIntegration:
         file = Path(__file__).resolve().parent.parent / "assets" / "example_audio.mp3"
 
         # when
-        result = client.transcribe(file=file)
+        result = client.transcribe(file=file)  # type: ignore
 
         # then
         assert "I am just a sample audio text." in result
@@ -47,7 +47,7 @@ class TestIntegration:
         request = {"file": "/Users/adr/Documents/repos/FasterWhisper-BentoML/tests/assets/example_audio.mp3"}
 
         # when
-        result = client.batch_transcribe(requests=[request])
+        result = client.batch_transcribe(requests=[request])  # type: ignore
 
         # then
         assert "I am just a sample audio text." in result
@@ -62,7 +62,7 @@ class TestIntegration:
         client = bentoml.SyncHTTPClient("http://localhost:8003")
 
         # when
-        task = client.task_transcribe.submit(file=file)
+        task = client.task_transcribe.submit(file=file)  # type: ignore
         while True:
             status = task.get_status()
             if str(status) == "ResultStatus.SUCCESS":
@@ -84,7 +84,7 @@ class TestIntegration:
         data_chunks = []
 
         # when
-        for data_chunk in client.streaming_transcribe(file=file):
+        for data_chunk in client.streaming_transcribe(file=file):  # type: ignore
             data_chunks.append(data_chunk)
         client.close()
 

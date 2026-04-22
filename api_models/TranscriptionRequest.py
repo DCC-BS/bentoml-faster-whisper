@@ -69,7 +69,7 @@ class TranscriptionRequest(BaseModel):
         default=faster_whisper_config.default_prompt,
         description="Optional text string or iterable of token ids to provide as a prompt for the first window.",
     )
-    response_format: ValidatedResponseFormat | None = Field(
+    response_format: ValidatedResponseFormat = Field(
         default=faster_whisper_config.default_response_format,
         description="The format of the output, in one of these options: `json`, `text`, `srt`, `verbose_json`, "
         "or `vtt`.",

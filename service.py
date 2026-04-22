@@ -1,14 +1,13 @@
 import logging
 import os
 from collections.abc import Generator
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
 import bentoml
 import huggingface_hub
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from faster_whisper.vad import VadOptions
+from fastapi import Path as FastAPIPath
 
 from api_models.input_models import (
     hf_model_info_to_model_object,
@@ -69,7 +68,7 @@ class BatchFasterWhisper:
         self.handler = FasterWhisperHandler()
 
     @bentoml.api(batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS)
-    async def batch_transcribe(self, requests: list[TranscriptionRequest]) -> list[str]:
+    async def batch_transcribe(self, requests: list[TranscriptionRequest]) -> list[WhisperResponse]:
         logger.debug(f"number of requests processed: {len(requests)}")
         return [self.handler.transcribe_audio(request) for request in requests]
 
@@ -90,28 +89,31 @@ class BatchFasterWhisper:
 )
 @bentoml.asgi_app(fastapi, path="/v1")
 class FasterWhisper:
-    batch = bentoml.depends(BatchFasterWhisper)
+    batch = bentoml.depends(BatchFasterWhisper)  # type: ignore
 
     def __init__(self):
         self.handler = FasterWhisperHandler()
         self.progress_handler = ProgressHandler()
 
-    @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)
+    @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)  # type: ignore
     @measure_processing_time
     def transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
         return self.handler.transcribe_audio(request)
 
-    @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)
+    @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)  # type: ignore
     async def batch_transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
-        return await self.batch.batch_transcribe([request])
+        results = await self.batch.batch_transcribe([request])
+        if not results:
+            raise RuntimeError("Batch transcription returned no results")
+        return results[0]
 
     @bentoml.task(
         route="/v1/audio/transcriptions/task",
-        input_spec=TranscriptionRequest,
+        input_spec=TranscriptionRequest,  # type: ignore
     )
     def task_transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
@@ -139,11 +141,12 @@ class FasterWhisper:
 
             result.append(segment)
 
-        self.progress_handler.remove_progress(request.progress_id)
-        result = clean_transcription_segments(result, transcription_info)
+        if request.progress_id is not None:
+            self.progress_handler.remove_progress(request.progress_id)
+        result = list(clean_transcription_segments(result, transcription_info))
         return segments_to_response(result, transcription_info, request.response_format)
 
-    @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)
+    @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)  # type: ignore
     @measure_processing_time
     def streaming_transcribe(self, **params: Any) -> Generator[WhisperResponse, None, None]:
         request = TranscriptionRequest.from_dict(params)
@@ -156,7 +159,7 @@ class FasterWhisper:
         for chunk in generator:
             yield chunk
 
-    @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)
+    @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)  # type: ignore
     @measure_processing_time
     def translate(self, **params: Any) -> WhisperResponse:
         request = TranslationRequest.from_dict(params)
@@ -170,7 +173,9 @@ class FasterWhisper:
 
     @fastapi.get("/models")
     def get_models(self) -> ModelListResponse:
-        models = huggingface_hub.list_models(library="ctranslate2", tags="automatic-speech-recognition", cardData=True)
+        models = huggingface_hub.list_models(
+            filter="ctranslate2", pipeline_tag="automatic-speech-recognition", cardData=True
+        )
         models = list(models)
         models.sort(key=lambda model: model.downloads, reverse=True)
         transformed_models = [hf_model_info_to_model_object(model) for model in models]
@@ -179,12 +184,12 @@ class FasterWhisper:
     @fastapi.get("/models/{model_name:path}")
     def get_model(
         self,
-        model_name=Annotated[str, Path(example="Systran/faster-distil-whisper-large-v2")],
+        model_name: Annotated[str, FastAPIPath(examples=["Systran/faster-distil-whisper-large-v2"])],
     ) -> ModelObject:
         models = huggingface_hub.list_models(
-            model_name=model_name,
-            library="ctranslate2",
-            tags="automatic-speech-recognition",
+            search=str(model_name),
+            filter="ctranslate2",
+            pipeline_tag="automatic-speech-recognition",
             cardData=True,
         )
         models = list(models)
@@ -212,10 +217,5 @@ class FasterWhisper:
         self._configure_vad_options(request)
 
     def _configure_vad_options(self, request: TranscriptionRequest | TranslationRequest):
-        vad_parameters = request.vad_parameters
-        if isinstance(vad_parameters, dict):
-            vad_parameters = VadOptions(**vad_parameters)
-        vad_parameters.max_speech_duration_s = (
-            float("inf") if vad_parameters.max_speech_duration_s == 999_999 else vad_parameters.max_speech_duration_s
-        )
-        request.vad_parameters = vad_parameters
+        if request.vad_parameters.max_speech_duration_s == 999_999:
+            request.vad_parameters.max_speech_duration_s = float("inf")

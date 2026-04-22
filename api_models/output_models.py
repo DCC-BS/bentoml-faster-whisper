@@ -73,7 +73,7 @@ def segments_to_response(
     response_format: ResponseFormat,
 ) -> "WhisperResponse":
     segments = list(segments)
-    if response_format == ResponseFormat.TEXT:  # noqa: RET503
+    if response_format == ResponseFormat.TEXT:
         return segments_to_text(segments)
     elif response_format == ResponseFormat.JSON:
         return TranscriptionJsonResponse.from_segments(segments).model_dump_json()
@@ -85,6 +85,8 @@ def segments_to_response(
         return "".join(segments_to_vtt(segment, i) for i, segment in enumerate(segments))
     elif response_format == ResponseFormat.SRT:
         return "".join(segments_to_srt(segment, i) for i, segment in enumerate(segments))
+    else:
+        raise ValueError(f"Unknown response format: {response_format}")
 
 
 def format_as_sse(data: str) -> str:

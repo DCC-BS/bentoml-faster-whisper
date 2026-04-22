@@ -109,14 +109,13 @@ def test_response_format_verbose_timestamp_granularities_word(faster_whisper_ser
     assert json.loads(transcription)["words"] is not None
 
 
-@pytest.mark.asyncio
-async def test_transcribe_streaming(faster_whisper_service):
+def test_transcribe_streaming(faster_whisper_service):
     # given
     file = Path("./tests/assets/example_audio.mp3")
     chunks = []
 
     # when
-    async for chunk in faster_whisper_service.streaming_transcribe(
+    for chunk in faster_whisper_service.streaming_transcribe(
         **_extend_params(file=file, response_format=ResponseFormat.JSON)
     ):
         chunks.append(chunk)

@@ -1,8 +1,12 @@
+import contextlib
 import os
-from typing import Iterable
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Iterable, Iterator
 
+import pyannote.audio as _pyannote_audio
 import torch
-import torchaudio
 from loguru import logger
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
@@ -25,10 +29,37 @@ class DiarizationSegment:
         return self.__str__()
 
 
+@contextlib.contextmanager
+def _as_wav(audio_path: str) -> Iterator[str]:
+    # MP3/FLAC headers report duration imprecisely; convert to WAV so pyannote
+    # gets an exact sample count without loading the whole file into RAM.
+    if Path(audio_path).suffix.lower() == ".wav":
+        yield audio_path
+        return
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1", tmp_path],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error("ffmpeg conversion failed: {}", e.stderr.decode(errors="replace"))
+            raise
+        yield tmp_path
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 class DiarizationService:
     """
     A service for speaker diarization using the pyannote.audio library.
     """
+
+    pipeline: Pipeline
 
     @logger.catch(reraise=True)
     def load(self):
@@ -37,16 +68,29 @@ class DiarizationService:
         The pipeline is sent to the GPU if available.
         """
         logger.info("Loading speaker diarization pipeline")
-        self.pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            use_auth_token=os.getenv("HF_AUTH_TOKEN"),
+        hf_token = os.getenv("HF_AUTH_TOKEN")
+        pipeline = Pipeline.from_pretrained(  # type: ignore[call-arg]
+            "pyannote/speaker-diarization-community-1",
+            token=hf_token or None,
         )
+        if pipeline is None:
+            raise RuntimeError("Failed to load diarization pipeline")
+        self.pipeline = pipeline
 
-        self.pipeline._models.segmentation_batch_size = 4
-        self.pipeline._models.embedding_batch_size = 4
+        _version = getattr(_pyannote_audio, "__version__", "unknown")
+        logger.info("pyannote.audio version: {}", _version)
+        try:
+            self.pipeline._models.segmentation_batch_size = 4  # type: ignore
+            self.pipeline._models.embedding_batch_size = 4  # type: ignore
+        except AttributeError:
+            logger.warning(
+                "pipeline._models batch-size attributes not found (pyannote.audio {}); "
+                "private API may have changed — batch sizes not configured",
+                _version,
+            )
 
-        # send pipeline to GPU (when available)
-        self.pipeline.to(torch.device("cuda"))
+        if torch.cuda.is_available():
+            self.pipeline.to(torch.device("cuda"))
 
     @logger.catch(reraise=True)
     def diarize(self, audio_path: str, num_speaker: int | None = None) -> Iterable[DiarizationSegment]:
@@ -61,15 +105,16 @@ class DiarizationService:
             Pipeline: The diarization pipeline with the results.
         """
 
-        # check if file exists
         if not os.path.isfile(audio_path):
             raise FileNotFoundError(f"File not found: {audio_path}")
 
         if num_speaker is not None and num_speaker <= 0:
             raise ValueError("num_speaker must be a positive integer or None.")
-        wafe_form, sample_rate = torchaudio.load(audio_path)
-        segments = self.pipeline({"waveform": wafe_form, "sample_rate": sample_rate}, num_speakers=num_speaker)
+
+        with _as_wav(audio_path) as wav_path:
+            output = self.pipeline(wav_path, num_speakers=num_speaker)
+
         logger.info("Diarization completed")
 
-        for segment in segments.itertracks(yield_label=True):
-            yield DiarizationSegment(segment[0], segment[1], segment[2])
+        for turn, speaker in output.speaker_diarization:
+            yield DiarizationSegment(turn, speaker, speaker)

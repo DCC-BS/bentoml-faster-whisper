@@ -1,6 +1,7 @@
 from http import HTTPStatus
 
 from bentoml.exceptions import BentoMLException
+from faster_whisper.vad import VadOptions
 
 from api_models.enums import ResponseFormat, Task
 from api_models.input_models import (
@@ -87,7 +88,7 @@ class FasterWhisperHandler:
     def prepare_audio_segments(self, request: TranscriptionRequest):
         with self.model_manager.load_model(request.model) as whisper:
             segments, transcription_info = whisper.transcribe(
-                request.file,
+                str(request.file),
                 initial_prompt=request.prompt,
                 language=request.language,
                 temperature=request.temperature,
@@ -95,7 +96,7 @@ class FasterWhisperHandler:
                 best_of=request.best_of,
                 hotwords=request.hotwords,
                 vad_filter=request.vad_filter,
-                vad_parameters=request.vad_parameters,
+                vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
                 condition_on_previous_text=request.condition_on_previous_text,
                 beam_size=request.beam_size,
                 patience=request.patience,
