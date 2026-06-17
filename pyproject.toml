@@ -13,8 +13,6 @@ dependencies = [
     "ctranslate2~=4.7.1",
     "python-dotenv~=1.2.0",
     "uvicorn~=0.44.0",
-    "pydub>=0.25.1",
-    "audioop-lts>=0.2.1",
     "pyannote-audio>=4.0",
     "huggingface-hub>=0.23",
     "loguru>=0.7.3",
@@ -54,6 +52,11 @@ torchaudio = [
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (run with 'make integration')",
+]
 
 [tool.ruff]
 target-version = "py313"

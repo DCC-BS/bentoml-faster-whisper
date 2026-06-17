@@ -1,24 +1,35 @@
+import threading
+
 from api_models.ProgressResponse import ProgressResponse
+
+_MAX_TRACKED_PROGRESS = 1000
 
 
 class ProgressHandler:
-    progress_dict: dict[str, ProgressResponse] = {}
+    def __init__(self) -> None:
+        # Per-instance and lock-guarded: a class-level dict would be shared and mutated across concurrent requests.
+        self.progress_dict: dict[str, ProgressResponse] = {}
+        self._lock = threading.Lock()
 
     def add_progress(self, id: str) -> None:
         """Adds a new task to the progress tracker."""
-        self.progress_dict[id] = ProgressResponse(progress=0, currentTime=0, duration=0)
+        with self._lock:
+            self.progress_dict[id] = ProgressResponse(progress=0, currentTime=0, duration=0)
 
-        if len(self.progress_dict) > 1000:
-            self.progress_dict.pop(next(iter(self.progress_dict)))
+            if len(self.progress_dict) > _MAX_TRACKED_PROGRESS:
+                self.progress_dict.pop(next(iter(self.progress_dict)))
 
     def update_progress(self, id: str, progress: ProgressResponse) -> None:
         """Updates the progress of a given task."""
-        self.progress_dict[id] = progress
+        with self._lock:
+            self.progress_dict[id] = progress
 
     def get_progress(self, id: str) -> ProgressResponse:
         """Retrieves the progress of a given task. Returns 0 if the task is not found."""
-        return self.progress_dict.get(id, ProgressResponse(progress=0, currentTime=0, duration=0))
+        with self._lock:
+            return self.progress_dict.get(id, ProgressResponse(progress=0, currentTime=0, duration=0))
 
     def remove_progress(self, id: str) -> None:
         """Removes a task from the progress tracker."""
-        self.progress_dict.pop(id, None)
+        with self._lock:
+            self.progress_dict.pop(id, None)

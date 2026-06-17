@@ -1,7 +1,11 @@
+import json
+import logging
+import subprocess
 from pathlib import Path
 
 from prometheus_client import Histogram
-from pydub import AudioSegment
+
+logger = logging.getLogger(__name__)
 
 AUDIO_INPUT_LENGTH_BUCKETS_S = [
     10.0,
@@ -43,7 +47,27 @@ realtime_factor_histogram = Histogram(
 )
 
 
-def get_audio_duration(file: Path):
-    """Gets the duration of an audio file in seconds."""
-    duration = AudioSegment.from_file(file).duration_seconds
-    return duration
+def get_audio_duration(file: Path) -> float:
+    """Gets the duration of an audio file in seconds.
+
+    Uses ffprobe to read container metadata only, avoiding decoding the whole file into RAM just for a metric.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(file),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return float(json.loads(result.stdout)["format"]["duration"])
+    except (subprocess.CalledProcessError, OSError, KeyError, ValueError) as e:
+        logger.warning("ffprobe duration probe failed for %s: %s", file, e)
+        return 0.0

@@ -8,7 +8,7 @@ from pyannote.core import Segment
 from diarization_service import DiarizationSegment, DiarizationService
 
 
-def _make_service_with_mock_pipeline(turns: list[tuple]) -> DiarizationService:
+def _make_service_with_mock_pipeline(turns: list[tuple]) -> tuple[DiarizationService, MagicMock]:
     mock_output = MagicMock()
     mock_output.speaker_diarization = turns
 
@@ -17,23 +17,23 @@ def _make_service_with_mock_pipeline(turns: list[tuple]) -> DiarizationService:
 
     sut = DiarizationService()
     sut.pipeline = mock_pipeline
-    return sut
+    return sut, mock_pipeline
 
 
 def test_diarize_file_not_found():
-    sut = _make_service_with_mock_pipeline([])
+    sut, _ = _make_service_with_mock_pipeline([])
     with pytest.raises(FileNotFoundError):
         list(sut.diarize("/nonexistent/path/audio.wav"))
 
 
 def test_diarize_invalid_num_speaker_zero():
-    sut = _make_service_with_mock_pipeline([])
+    sut, _ = _make_service_with_mock_pipeline([])
     with pytest.raises(ValueError):
         list(sut.diarize(__file__, num_speaker=0))
 
 
 def test_diarize_invalid_num_speaker_negative():
-    sut = _make_service_with_mock_pipeline([])
+    sut, _ = _make_service_with_mock_pipeline([])
     with pytest.raises(ValueError):
         list(sut.diarize(__file__, num_speaker=-1))
 
@@ -43,7 +43,7 @@ def test_diarize_returns_segments(tmp_path):
         (Segment(0.0, 3.0), "SPEAKER_00"),
         (Segment(3.5, 7.0), "SPEAKER_01"),
     ]
-    sut = _make_service_with_mock_pipeline(turns)
+    sut, _ = _make_service_with_mock_pipeline(turns)
 
     audio_file = tmp_path / "audio.wav"
     audio_file.touch()
@@ -60,45 +60,45 @@ def test_diarize_returns_segments(tmp_path):
 
 
 def test_diarize_passes_num_speakers_to_pipeline(tmp_path):
-    sut = _make_service_with_mock_pipeline([])
+    sut, mock_pipeline = _make_service_with_mock_pipeline([])
     audio_file = tmp_path / "audio.wav"
     audio_file.touch()
 
     list(sut.diarize(str(audio_file), num_speaker=2))
 
-    sut.pipeline.assert_called_once()  # type: ignore[union-attr]
-    _, kwargs = sut.pipeline.call_args  # type: ignore[union-attr]
+    mock_pipeline.assert_called_once()
+    _, kwargs = mock_pipeline.call_args
     assert kwargs["num_speakers"] == 2
 
 
 def test_diarize_passes_none_num_speakers_by_default(tmp_path):
-    sut = _make_service_with_mock_pipeline([])
+    sut, mock_pipeline = _make_service_with_mock_pipeline([])
     audio_file = tmp_path / "audio.wav"
     audio_file.touch()
 
     list(sut.diarize(str(audio_file)))
 
-    sut.pipeline.assert_called_once()  # type: ignore[union-attr]
-    _, kwargs = sut.pipeline.call_args  # type: ignore[union-attr]
+    mock_pipeline.assert_called_once()
+    _, kwargs = mock_pipeline.call_args
     assert kwargs["num_speakers"] is None
 
 
 def test_diarize_passes_wav_path_directly(tmp_path):
     """WAV files are passed directly to the pipeline — no conversion, no waveform in RAM."""
-    sut = _make_service_with_mock_pipeline([])
+    sut, mock_pipeline = _make_service_with_mock_pipeline([])
     audio_file = tmp_path / "audio.wav"
     audio_file.touch()
 
     list(sut.diarize(str(audio_file)))
 
-    sut.pipeline.assert_called_once()  # type: ignore[union-attr]
-    args, _ = sut.pipeline.call_args  # type: ignore[union-attr]
+    mock_pipeline.assert_called_once()
+    args, _ = mock_pipeline.call_args
     assert args[0] == str(audio_file)
 
 
 def test_diarize_converts_mp3_to_wav(tmp_path):
     """MP3 files are converted to a temp WAV before passing to the pipeline."""
-    sut = _make_service_with_mock_pipeline([])
+    sut, mock_pipeline = _make_service_with_mock_pipeline([])
     audio_file = tmp_path / "audio.mp3"
     audio_file.touch()
 
@@ -110,8 +110,8 @@ def test_diarize_converts_mp3_to_wav(tmp_path):
         mock_run.side_effect = fake_ffmpeg
         list(sut.diarize(str(audio_file)))
 
-    sut.pipeline.assert_called_once()  # type: ignore[union-attr]
-    args, _ = sut.pipeline.call_args  # type: ignore[union-attr]
+    mock_pipeline.assert_called_once()
+    args, _ = mock_pipeline.call_args
     assert args[0].endswith(".wav")
     assert args[0] != str(audio_file)
 

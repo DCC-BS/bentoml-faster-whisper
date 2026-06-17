@@ -1,3 +1,4 @@
+import sys
 from http import HTTPStatus
 
 from bentoml.exceptions import BentoMLException
@@ -23,8 +24,8 @@ from model_manager import WhisperModelManager
 class FasterWhisperHandler:
     def __init__(self):
         self.model_manager = WhisperModelManager(WhisperModelConfig())
+        # Loaded lazily on first diarize() so workers that never diarize don't pin a pipeline to the GPU.
         self.diarization = DiarizationService()
-        self.diarization.load()
 
     def transcribe_audio(
         self,
@@ -37,8 +38,12 @@ class FasterWhisperHandler:
         )
 
         segments, transcription_info = self.prepare_audio_segments(request)
-        segments = clean_transcription_segments(segments, transcription_info)
-        return segments_to_response(segments, transcription_info, request.response_format)
+        try:
+            cleaned = clean_transcription_segments(segments, transcription_info)
+            return segments_to_response(cleaned, transcription_info, request.response_format)
+        finally:
+            # Release the held model ref even if cleaning or response building raises midway.
+            segments.close()
 
     def translate_audio(
         self,
@@ -61,6 +66,7 @@ class FasterWhisperHandler:
         log_prob_threshold,
         prompt_reset_on_temperature,
     ):
+        # Consume the lazy generator inside the context manager so the model ref-count is held for the whole decode.
         with self.model_manager.load_model(model) as whisper:
             segments, transcription_info = whisper.transcribe(
                 file,
@@ -82,11 +88,16 @@ class FasterWhisperHandler:
                 log_prob_threshold=log_prob_threshold,
                 prompt_reset_on_temperature=prompt_reset_on_temperature,
             )
-        segments = Segment.from_faster_whisper_segments(segments)
-        return segments_to_response(segments, transcription_info, response_format)
+            segments = Segment.from_faster_whisper_segments(segments)
+            return segments_to_response(segments, transcription_info, response_format)
 
     def prepare_audio_segments(self, request: TranscriptionRequest):
-        with self.model_manager.load_model(request.model) as whisper:
+        # transcribe() returns a lazy generator that only decodes while iterated, so the model ref-count
+        # must be held for the lifetime of the returned generator, not just this method call. We enter the
+        # context manager here and exit it when the generator is exhausted, closed, or raises.
+        model_ctx = self.model_manager.load_model(request.model)
+        whisper = model_ctx.__enter__()
+        try:
             segments, transcription_info = whisper.transcribe(
                 str(request.file),
                 initial_prompt=request.prompt,
@@ -108,15 +119,24 @@ class FasterWhisperHandler:
                 prompt_reset_on_temperature=request.prompt_reset_on_temperature,
             )
 
-        segments = Segment.from_faster_whisper_segments(segments)
+            segments = Segment.from_faster_whisper_segments(segments)
 
-        if request.diarization:
-            if request.file.suffix in [".wav", ".mp3", ".flac"]:
-                dia_segments = self.diarization.diarize(str(request.file), request.diarization_speaker_count)
-                segments = merge_whipser_diarization(segments, dia_segments)
-            else:
-                raise BentoMLException(
-                    error_code=HTTPStatus.BAD_REQUEST, message="Diarization is not supported for non-wav files"
-                )
+            if request.diarization:
+                if request.file.suffix in [".wav", ".mp3", ".flac"]:
+                    dia_segments = self.diarization.diarize(str(request.file), request.diarization_speaker_count)
+                    segments = merge_whipser_diarization(segments, dia_segments)
+                else:
+                    raise BentoMLException(
+                        error_code=HTTPStatus.BAD_REQUEST, message="Diarization is not supported for non-wav files"
+                    )
+        except BaseException:
+            model_ctx.__exit__(*sys.exc_info())
+            raise
 
-        return segments, transcription_info
+        def _held_segments():
+            try:
+                yield from segments
+            finally:
+                model_ctx.__exit__(None, None, None)
+
+        return _held_segments(), transcription_info

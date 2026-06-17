@@ -2,6 +2,7 @@ import contextlib
 import os
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -59,38 +60,50 @@ class DiarizationService:
     A service for speaker diarization using the pyannote.audio library.
     """
 
-    pipeline: Pipeline
+    def __init__(self) -> None:
+        self.pipeline: Pipeline | None = None
+        # Guards both lazy loading and inference: a pyannote pipeline is not thread-safe.
+        self._lock = threading.Lock()
+        # Lower batch sizes to reduce peak GPU activation memory on large files / tight GPUs.
+        self._segmentation_batch_size = int(os.getenv("DIARIZATION_SEGMENTATION_BATCH_SIZE", "4"))
+        self._embedding_batch_size = int(os.getenv("DIARIZATION_EMBEDDING_BATCH_SIZE", "4"))
 
     @logger.catch(reraise=True)
     def load(self):
         """
         Load the speaker diarization pipeline from the Hugging Face model hub.
-        The pipeline is sent to the GPU if available.
+        The pipeline is sent to the GPU if available. Idempotent and lazy: loading
+        only happens on first use so workers that never diarize don't pin a
+        pipeline to the GPU.
         """
-        logger.info("Loading speaker diarization pipeline")
-        hf_token = os.getenv("HF_AUTH_TOKEN")
-        pipeline = Pipeline.from_pretrained(  # type: ignore[call-arg]
-            "pyannote/speaker-diarization-community-1",
-            token=hf_token or None,
-        )
-        if pipeline is None:
-            raise RuntimeError("Failed to load diarization pipeline")
-        self.pipeline = pipeline
-
-        _version = getattr(_pyannote_audio, "__version__", "unknown")
-        logger.info("pyannote.audio version: {}", _version)
-        try:
-            self.pipeline._models.segmentation_batch_size = 4  # type: ignore
-            self.pipeline._models.embedding_batch_size = 4  # type: ignore
-        except AttributeError:
-            logger.warning(
-                "pipeline._models batch-size attributes not found (pyannote.audio {}); "
-                "private API may have changed — batch sizes not configured",
-                _version,
+        with self._lock:
+            if self.pipeline is not None:
+                return
+            logger.info("Loading speaker diarization pipeline")
+            hf_token = os.getenv("HF_AUTH_TOKEN")
+            pipeline = Pipeline.from_pretrained(  # type: ignore[call-arg]
+                "pyannote/speaker-diarization-community-1",
+                token=hf_token or None,
             )
+            if pipeline is None:
+                raise RuntimeError("Failed to load diarization pipeline")
 
-        if torch.cuda.is_available():
-            self.pipeline.to(torch.device("cuda"))
+            _version = getattr(_pyannote_audio, "__version__", "unknown")
+            logger.info("pyannote.audio version: {}", _version)
+            try:
+                pipeline._models.segmentation_batch_size = self._segmentation_batch_size  # type: ignore
+                pipeline._models.embedding_batch_size = self._embedding_batch_size  # type: ignore
+            except AttributeError:
+                logger.warning(
+                    "pipeline._models batch-size attributes not found (pyannote.audio {}); "
+                    "private API may have changed — batch sizes not configured",
+                    _version,
+                )
+
+            if torch.cuda.is_available():
+                pipeline.to(torch.device("cuda"))
+
+            self.pipeline = pipeline
 
     @logger.catch(reraise=True)
     def diarize(self, audio_path: str, num_speaker: int | None = None) -> Iterable[DiarizationSegment]:
@@ -111,8 +124,17 @@ class DiarizationService:
         if num_speaker is not None and num_speaker <= 0:
             raise ValueError("num_speaker must be a positive integer or None.")
 
+        self.load()
+        assert self.pipeline is not None  # guaranteed by load()
+
         with _as_wav(audio_path) as wav_path:
-            output = self.pipeline(wav_path, num_speakers=num_speaker)
+            with self._lock:
+                try:
+                    output = self.pipeline(wav_path, num_speakers=num_speaker)
+                finally:
+                    # Return this run's activation blocks to the allocator for the Whisper model / next request.
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
         logger.info("Diarization completed")
 
