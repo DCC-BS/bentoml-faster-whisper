@@ -9,6 +9,8 @@ from api_models.enums import ResponseFormat, TimestampGranularity
 # to run these test start the server with the following command:
 # uv run bentoml serve service:FasterWhisper -p 8003
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.parametrize(
     "response_format, timestamp_granularities",

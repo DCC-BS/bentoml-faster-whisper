@@ -14,9 +14,14 @@ check: ## Run code quality tools.
 	@uv run ty check .
 
 .PHONY: test
-test: ## Test the code with pytest
+test: ## Test the code with pytest (excludes integration tests)
 	@echo "🚀 Testing code: Running pytest"
-	@uv run --env-file .env python -m pytest
+	@uv run --env-file .env python -m pytest -m "not integration"
+
+.PHONY: integration
+integration: ## Run integration tests (requires a running service)
+	@echo "🚀 Testing code: Running integration tests"
+	@uv run --env-file .env python -m pytest -m integration
 
 .PHONY: docker-build
 docker-build: ## Build and tag the Docker image for quay.io/ktbs/fd-itbs/faster-whisper

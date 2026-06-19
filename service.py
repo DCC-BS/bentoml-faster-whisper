@@ -121,14 +121,14 @@ class FasterWhisper:
 
         result: list[Segment] = []
 
+        segments, transcription_info = self.handler.prepare_audio_segments(request)
+
         if request.progress_id:
             self.progress_handler.add_progress(request.progress_id)
 
-        segments, transcription_info = self.handler.prepare_audio_segments(request)
-
-        for segment in segments:
-            if request.progress_id:
-                (
+        try:
+            for segment in segments:
+                if request.progress_id:
                     self.progress_handler.update_progress(
                         request.progress_id,
                         ProgressResponse(
@@ -136,13 +136,15 @@ class FasterWhisper:
                             currentTime=segment.end,
                             duration=transcription_info.duration,
                         ),
-                    ),
-                )
+                    )
 
-            result.append(segment)
+                result.append(segment)
+        finally:
+            # Release the held model ref and progress entry even if the decode raises midway.
+            segments.close()
+            if request.progress_id is not None:
+                self.progress_handler.remove_progress(request.progress_id)
 
-        if request.progress_id is not None:
-            self.progress_handler.remove_progress(request.progress_id)
         result = list(clean_transcription_segments(result, transcription_info))
         return segments_to_response(result, transcription_info, request.response_format)
 
@@ -156,8 +158,12 @@ class FasterWhisper:
         segments, transcription_info = self.handler.prepare_audio_segments(request)
         generator = segments_to_streaming_response(segments, transcription_info, request.response_format)
 
-        for chunk in generator:
-            yield chunk
+        try:
+            for chunk in generator:
+                yield chunk
+        finally:
+            # Release the held model ref if the client disconnects mid-stream.
+            segments.close()
 
     @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)  # type: ignore
     @measure_processing_time
