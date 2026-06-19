@@ -121,10 +121,10 @@ class FasterWhisper:
 
         result: list[Segment] = []
 
+        segments, transcription_info = self.handler.prepare_audio_segments(request)
+
         if request.progress_id:
             self.progress_handler.add_progress(request.progress_id)
-
-        segments, transcription_info = self.handler.prepare_audio_segments(request)
 
         try:
             for segment in segments:

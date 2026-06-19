@@ -122,12 +122,13 @@ class FasterWhisperHandler:
             segments = Segment.from_faster_whisper_segments(segments)
 
             if request.diarization:
-                if request.file.suffix in [".wav", ".mp3", ".flac"]:
+                if request.file.suffix.lower() in [".wav", ".mp3", ".flac"]:
                     dia_segments = self.diarization.diarize(str(request.file), request.diarization_speaker_count)
                     segments = merge_whipser_diarization(segments, dia_segments)
                 else:
                     raise BentoMLException(
-                        error_code=HTTPStatus.BAD_REQUEST, message="Diarization is not supported for non-wav files"
+                        error_code=HTTPStatus.BAD_REQUEST,
+                        message="Diarization is only supported for .wav, .mp3 and .flac files",
                     )
         except BaseException:
             model_ctx.__exit__(*sys.exc_info())

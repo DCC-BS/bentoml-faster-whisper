@@ -66,8 +66,9 @@ def get_audio_duration(file: Path) -> float:
             ],
             check=True,
             capture_output=True,
+            timeout=30,
         )
         return float(json.loads(result.stdout)["format"]["duration"])
-    except (subprocess.CalledProcessError, OSError, KeyError, ValueError) as e:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, KeyError, ValueError) as e:
         logger.warning("ffprobe duration probe failed for %s: %s", file, e)
         return 0.0

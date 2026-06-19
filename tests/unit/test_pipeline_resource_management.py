@@ -77,12 +77,13 @@ def test_generator_close_releases_model_ref(handler):
 
 
 def test_streaming_endpoint_releases_ref_after_full_stream(service):
-    request_params = _request(LONG_AUDIO).model_dump()
+    request = _request(LONG_AUDIO)
+    request_params = request.model_dump()
 
     chunks = list(service.streaming_transcribe(**request_params))
 
     assert chunks
-    sdm = service.handler.model_manager.loaded_models["large-v2"]
+    sdm = service.handler.model_manager.loaded_models[request.model]
     assert sdm.ref_count == 0
 
 
@@ -108,7 +109,7 @@ def test_concurrent_transcriptions_release_model_ref(handler):
 
     assert not errors, f"concurrent transcriptions raised: {errors}"
     assert len(results) == 6
-    sdm = handler.model_manager.loaded_models["large-v2"]
+    sdm = handler.model_manager.loaded_models[_request(SHORT_AUDIO).model]
     assert sdm.ref_count == 0, "ref count must net to 0 after concurrent load"
 
 

@@ -58,6 +58,10 @@ def test_real_speech_verbose_json_has_words(service):
     result = json.loads(service.transcribe(**params))
 
     assert result["words"], "verbose_json output must include word-level timestamps"
+    for word in result["words"]:
+        assert "start" in word and "end" in word, f"word entry missing timestamps: {word!r}"
+        assert isinstance(word["start"], (int, float)) and isinstance(word["end"], (int, float))
+        assert word["end"] >= word["start"]
 
 
 def test_long_audio_transcribes_fully(service):
@@ -91,5 +95,6 @@ def test_concurrent_transcriptions_on_larger_file(service):
     assert len(results) == 4
     assert all(text.strip() for text in results)
 
-    sdm = service.handler.model_manager.loaded_models["large-v2"]
+    model_key = TranscriptionRequest.model_validate({"file": LONG_AUDIO}).model
+    sdm = service.handler.model_manager.loaded_models[model_key]
     assert sdm.ref_count == 0, "model ref must net to 0 after concurrent load"
