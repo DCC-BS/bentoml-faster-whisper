@@ -1,4 +1,5 @@
-FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
+# 'base' suffices: pip torch/ctranslate2 cu128 wheels bundle their own CUDA libs.
+FROM nvidia/cuda:12.8.0-base-ubuntu24.04
 
 ENV TZ=Europe/Zurich
 ENV LANG=de_CH.UTF-8

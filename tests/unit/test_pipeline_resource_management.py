@@ -28,7 +28,7 @@ def handler() -> FasterWhisperHandler:
 
 
 @pytest.fixture(scope="module")
-def service() -> FasterWhisper:
+def service():
     return FasterWhisper()
 
 

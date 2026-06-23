@@ -93,7 +93,7 @@ def segments_to_streaming_response(
     segments: Iterable[Segment],
     transcription_info: TranscriptionInfo,
     response_format: ResponseFormat,
-) -> Generator["WhisperResponse", None, None]:
+) -> Generator[str, None, None]:
     """Stream one newline-delimited chunk per segment (NDJSON-style).
 
     Each chunk is the bare payload for the requested format followed by a

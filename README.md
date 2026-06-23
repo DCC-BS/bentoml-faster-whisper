@@ -83,6 +83,34 @@ docker-compose up --build
 
 Documentation: [BentoML to generate an OCI-compliant image](https://docs.bentoml.com/en/latest/guides/containerization.html)
 
+### CUDA / torchcodec version coupling (maintenance note)
+
+The stack is currently pinned to **CUDA 12.8 (cu128)**. `torch`, `torchaudio` and
+`torchcodec` are all routed to the `pytorch-cu128` index in `pyproject.toml`
+(`[tool.uv.sources]`). This coupling is load-bearing:
+
+- The cu128 index only ships `torchcodec` up to **0.11.1**, which matches **torch
+  2.11**. If `torchcodec` is left unpinned it resolves to a newer PyPI build
+  (e.g. 0.14.0) compiled for **CUDA 13**, which fails to load at runtime with
+  `libnvrtc.so.13: cannot open shared object file`. That breaks pyannote
+  diarization (`NameError: name 'AudioDecoder' is not defined`).
+- So torch on linux/win is effectively capped at **2.11** until we move to CUDA 13.
+
+**To upgrade to CUDA 13 (cu130):**
+1. Bump the base image in `Dockerfile`: `nvidia/cuda:12.8.0-base-ubuntu24.04`
+   → `nvidia/cuda:13.0.0-base-ubuntu24.04`.
+2. In `pyproject.toml`, change the index URL and name:
+   `https://download.pytorch.org/whl/cu128` → `.../cu130`, and update the
+   `pytorch-cu128` index name + all `[tool.uv.sources]` markers (`torch`,
+   `torchvision`, `torchaudio`, `torchcodec`) to point at it.
+3. Relax/raise the `torchcodec>=0.11` pin (cu130 ships 0.12+, paired with torch
+   ≥2.11). Let `torch`/`torchaudio` resolve to their cu130 builds.
+4. `uv lock`, then verify the codec loads:
+   `uv run python -c "from pyannote.audio.core.io import AudioDecoder"`.
+5. Ensure the deploy host has an NVIDIA driver new enough for CUDA 13.
+
+Compatibility reference: [torchcodec version table](https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec).
+
 ## Observability
 
 BentoML automatically collects a set of default metrics for each Service and exposes them via '/metrics' endpoint.

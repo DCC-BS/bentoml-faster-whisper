@@ -3,5 +3,5 @@ import uvicorn
 from service import FasterWhisper
 
 if __name__ == "__main__":
-    app = FasterWhisper.to_asgi()  # type: ignore
+    app = FasterWhisper.to_asgi()
     uvicorn.run(app, host="0.0.0.0", port=8004)

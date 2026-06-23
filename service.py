@@ -89,7 +89,7 @@ class BatchFasterWhisper:
 )
 @bentoml.asgi_app(fastapi, path="/v1")
 class FasterWhisper:
-    batch = bentoml.depends(BatchFasterWhisper)  # type: ignore
+    batch = bentoml.depends(BatchFasterWhisper)
 
     def __init__(self):
         self.handler = FasterWhisperHandler()

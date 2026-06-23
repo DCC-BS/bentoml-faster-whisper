@@ -23,7 +23,7 @@ LONG_AUDIO = ASSETS / "long_example_audio.mp3"
 
 
 @pytest.fixture(scope="module")
-def service() -> FasterWhisper:
+def service():
     return FasterWhisper()
 
 
