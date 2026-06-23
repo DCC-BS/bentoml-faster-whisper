@@ -11,7 +11,7 @@ dependencies = [
     "torchcodec>=0.11",
     "nvidia-npp-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
     "pydantic>=2.12.2",
-    "requests~=2.33.1",
+    "requests~=2.34.2",
     "ctranslate2~=4.8.0",
     "python-dotenv~=1.2.0",
     "uvicorn~=0.49.0",
