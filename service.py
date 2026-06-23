@@ -121,10 +121,22 @@ class FasterWhisper:
 
         result: list[Segment] = []
 
-        segments, transcription_info = self.handler.prepare_audio_segments(request)
-
+        # Register the entry before diarization (which runs eagerly inside prepare_audio_segments) so
+        # the UI sees a tracked task and live diarization progress, not a missing/0 entry until decode.
+        diarization_progress_callback = None
         if request.progress_id:
             self.progress_handler.add_progress(request.progress_id)
+            progress_id = request.progress_id
+
+            def diarization_progress_callback(fraction: float) -> None:
+                self.progress_handler.update_progress(
+                    progress_id,
+                    ProgressResponse(progress=fraction, currentTime=0, duration=0),
+                )
+
+        segments, transcription_info = self.handler.prepare_audio_segments(
+            request, diarization_progress_callback=diarization_progress_callback
+        )
 
         try:
             for segment in segments:

@@ -4,13 +4,62 @@ import subprocess
 import tempfile
 import threading
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
 import pyannote.audio as _pyannote_audio
 import torch
 from loguru import logger
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
+
+# Ordered weights for the pyannote speaker-diarization steps (they fire in this order). "embeddings"
+# is the heavy GPU step that reports granular completed/total, so it gets the bulk of the band.
+_DIARIZATION_STEP_WEIGHTS: dict[str, float] = {
+    "segmentation": 0.15,
+    "speaker_counting": 0.05,
+    "embeddings": 0.70,
+    "discrete_diarization": 0.10,
+}
+
+
+class _DiarizationProgressHook:
+    """pyannote-compatible hook that maps internal diarization steps to a monotonic 0..1 fraction
+    and forwards it to ``on_progress``. Unknown steps are ignored and the value never decreases, so
+    reordered/extra steps from a future pyannote version degrade gracefully instead of breaking."""
+
+    def __init__(self, on_progress: Callable[[float], None]) -> None:
+        self._on_progress = on_progress
+        self._last = 0.0
+        self._base: dict[str, float] = {}
+        offset = 0.0
+        for name, weight in _DIARIZATION_STEP_WEIGHTS.items():
+            self._base[name] = offset
+            offset += weight
+
+    def __enter__(self) -> "_DiarizationProgressHook":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
+    def __call__(
+        self,
+        step_name: str,
+        step_artifact: Any,
+        file: Mapping | None = None,
+        total: int | None = None,
+        completed: int | None = None,
+    ) -> None:
+        weight = _DIARIZATION_STEP_WEIGHTS.get(step_name)
+        if weight is None:
+            return  # unknown step: leave the bar where it is
+        within = (completed / total) if (total and completed is not None) else 1.0
+        within = min(max(within, 0.0), 1.0)
+        fraction = min(self._base[step_name] + weight * within, 1.0)
+        if fraction <= self._last:
+            return  # pyannote emits completed=0 first; never move backwards
+        self._last = fraction
+        self._on_progress(fraction)
 
 
 class DiarizationSegment:
@@ -122,7 +171,12 @@ class DiarizationService:
             self.pipeline = pipeline
 
     @logger.catch(reraise=True)
-    def diarize(self, audio_path: str, num_speaker: int | None = None) -> Iterable[DiarizationSegment]:
+    def diarize(
+        self,
+        audio_path: str,
+        num_speaker: int | None = None,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> Iterable[DiarizationSegment]:
         """
         Perform speaker diarization on the given audio file.
 
@@ -146,7 +200,11 @@ class DiarizationService:
         with _as_wav(audio_path) as wav_path:
             with self._lock:
                 try:
-                    output = self.pipeline(wav_path, num_speakers=num_speaker)
+                    if progress_callback is not None:
+                        with _DiarizationProgressHook(progress_callback) as hook:
+                            output = self.pipeline(wav_path, num_speakers=num_speaker, hook=hook)
+                    else:
+                        output = self.pipeline(wav_path, num_speakers=num_speaker)
                 finally:
                     # Return this run's activation blocks to the allocator for the Whisper model / next request.
                     if torch.cuda.is_available():

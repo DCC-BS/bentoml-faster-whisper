@@ -1,5 +1,6 @@
 import sys
 from http import HTTPStatus
+from typing import Callable
 
 from bentoml.exceptions import BentoMLException
 from faster_whisper.vad import VadOptions
@@ -91,7 +92,11 @@ class FasterWhisperHandler:
             segments = Segment.from_faster_whisper_segments(segments)
             return segments_to_response(segments, transcription_info, response_format)
 
-    def prepare_audio_segments(self, request: TranscriptionRequest):
+    def prepare_audio_segments(
+        self,
+        request: TranscriptionRequest,
+        diarization_progress_callback: Callable[[float], None] | None = None,
+    ):
         # transcribe() returns a lazy generator that only decodes while iterated, so the model ref-count
         # must be held for the lifetime of the returned generator, not just this method call. We enter the
         # context manager here and exit it when the generator is exhausted, closed, or raises.
@@ -123,7 +128,11 @@ class FasterWhisperHandler:
 
             if request.diarization:
                 if request.file.suffix.lower() in [".wav", ".mp3", ".flac"]:
-                    dia_segments = self.diarization.diarize(str(request.file), request.diarization_speaker_count)
+                    dia_segments = self.diarization.diarize(
+                        str(request.file),
+                        request.diarization_speaker_count,
+                        progress_callback=diarization_progress_callback,
+                    )
                     segments = merge_whipser_diarization(segments, dia_segments)
                 else:
                     raise BentoMLException(

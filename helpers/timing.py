@@ -20,7 +20,6 @@ def measure_processing_time(func: Callable) -> Callable:
     def wrapper(self, *args, **kwargs):
         start_time = time.time()
 
-        # Get the request object from either args or kwargs
         audio_file = kwargs.get("file")
 
         result = func(self, *args, **kwargs)
@@ -34,12 +33,10 @@ def measure_processing_time(func: Callable) -> Callable:
 
         return result
 
-    # Handle async functions
     @functools.wraps(func)
     async def async_wrapper(self, *args, **kwargs):
         start_time = time.time()
 
-        # Similar logic to extract request/file
         request = kwargs.get("request")
         if not request:
             for key, value in kwargs.items():
@@ -51,7 +48,6 @@ def measure_processing_time(func: Callable) -> Callable:
         else:
             audio_file = getattr(request, "file", None)
 
-        # For **params unpacking
         if not audio_file and len(kwargs) == 1 and list(kwargs.keys())[0] == "params":
             params = kwargs["params"]
             audio_file = params.get("file")

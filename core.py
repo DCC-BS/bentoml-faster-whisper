@@ -186,7 +186,6 @@ def segments_to_srt(segment: Segment, i: int) -> str:
 
 def canonicalize_word(text: str) -> str:
     text = text.lower()
-    # Remove non-alphabetic characters using regular expression
     text = re.sub(r"[^a-z]", "", text)
     return text.lower().strip().strip(".,?!")
 
