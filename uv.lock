@@ -280,7 +280,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bentoml", specifier = "==1.4.38" },
-    { name = "ctranslate2", specifier = "~=4.7.1" },
+    { name = "ctranslate2", specifier = "~=4.8.0" },
     { name = "fastapi", specifier = ">=0.135.0" },
     { name = "faster-whisper", specifier = "==1.2.1" },
     { name = "huggingface-hub", specifier = ">=0.23" },
@@ -474,7 +474,7 @@ wheels = [
 
 [[package]]
 name = "ctranslate2"
-version = "4.7.2"
+version = "4.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -482,11 +482,11 @@ dependencies = [
     { name = "setuptools" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3f/36/6dcfe766d4b329131c227acb982d03ceb2f5dd1509bc036a2fbb0197ebc7/ctranslate2-4.7.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:9152e575b226c57e677d3fecc2f2ce0825c828845ac922986382b8c37fc39740", size = 1259476, upload-time = "2026-05-19T06:41:52.082Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/74/e89361f9f84179984ca3be47bf53f2ccfb2bb0dc3c35005457bf574bf2bd/ctranslate2-4.7.2-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:eec0521ae9e790147561394257c7a95886f3d8ff28842ffd094248154a928fee", size = 11922163, upload-time = "2026-05-19T06:41:54.337Z" },
-    { url = "https://files.pythonhosted.org/packages/11/a5/1000f55ccc1c62acb6ec798ae6c773e175fd08cbac3651e8a59c74c8014f/ctranslate2-4.7.2-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:3bd9d5842716ddaed629315fb2f87139ab8e8c62364ea487fbc77c63cca49a23", size = 16875787, upload-time = "2026-05-19T06:41:58.039Z" },
-    { url = "https://files.pythonhosted.org/packages/b9/e2/cd18090c3282bcbd2492ee129e721a25ffd3e12d2ece4a19a99091c1e87a/ctranslate2-4.7.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c4d1ec8d6c9aaecb049d562bbd4358e6320b3638dcaa28ba786b2eaefd559ae6", size = 39018460, upload-time = "2026-05-19T06:42:02.672Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/a2/909ce8b121c0148762e49dfda71bcec9b57c502dcb68e879ba5d84370d75/ctranslate2-4.7.2-cp313-cp313-win_amd64.whl", hash = "sha256:e329af76bbcd0c488f8a191fe6c988c3ca9fe09d3086f8469702dc906a8b4066", size = 18845965, upload-time = "2026-05-19T06:42:06.312Z" },
+    { url = "https://files.pythonhosted.org/packages/db/59/ef2b2b0c2624122a46aed4300aaa293f83fb8cbd02543eeb4fc30e9b49ce/ctranslate2-4.8.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:892898271f7f2c6a3651a7ea4d91f5727f97baed36171e5026456dbf0916030a", size = 1268988, upload-time = "2026-06-06T19:18:15.016Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/04/7295ef780fa7cb3e0835cb5b4032a5470ca484cd4c719ac01d6665169e07/ctranslate2-4.8.0-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:aa53859acd61db1e287db57be955885fd271f84348af37dabe2c3dbd0b4425e2", size = 11928594, upload-time = "2026-06-06T19:18:16.938Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/f0/23e4e7d422fe1904db8389dd2a979c8e278e2a0d56064bb54e7651372b18/ctranslate2-4.8.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:7531ed5148099792ec488f80e21f9bb551fb9fdf335c4b6c3720f11d53f2639c", size = 16881562, upload-time = "2026-06-06T19:18:21.816Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/ef/282e00f63bc1ceb45d9f0e6cb11a9f63e3f8befd980e6264e7b6b81d1536/ctranslate2-4.8.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3427639aa036ea3d8e6864598552dc0b32c4017801925b8165638acb937b39cf", size = 39526333, upload-time = "2026-06-06T19:18:25.383Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/6b/3c7e20503d008c62fae22c1ebe7bd4ce3c50b3033e7d97ba04c8c92e6dd1/ctranslate2-4.8.0-cp313-cp313-win_amd64.whl", hash = "sha256:f6ab3fa77a0a4259deaf7f23979c9182974d45857873211d417fdf364a55cac5", size = 19218975, upload-time = "2026-06-06T19:18:28.506Z" },
 ]
 
 [[package]]
