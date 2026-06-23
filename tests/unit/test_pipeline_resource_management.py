@@ -83,6 +83,7 @@ def test_streaming_endpoint_releases_ref_after_full_stream(service):
     chunks = list(service.streaming_transcribe(**request_params))
 
     assert chunks
+    assert all(chunk.endswith("\n") and not chunk.startswith("data:") for chunk in chunks)
     sdm = service.handler.model_manager.loaded_models[request.model]
     assert sdm.ref_count == 0
 

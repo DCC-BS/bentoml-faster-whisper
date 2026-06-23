@@ -121,7 +121,13 @@ def test_transcribe_streaming(faster_whisper_service):
         chunks.append(chunk)
 
     # then
-    assert chunks is not None
+    assert chunks, "streaming must emit at least one chunk"
+    for chunk in chunks:
+        # NDJSON contract: bare, newline-delimited JSON payloads with no SSE framing.
+        assert chunk.endswith("\n"), f"chunk must be newline-delimited, got {chunk!r}"
+        assert not chunk.startswith("data:"), f"chunk must not carry SSE 'data:' framing, got {chunk!r}"
+        payload = json.loads(chunk)  # each line must be valid, self-contained JSON
+        assert "text" in payload
 
 
 def test_transcribe_task(faster_whisper_service):

@@ -150,7 +150,7 @@ class FasterWhisper:
 
     @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)  # type: ignore
     @measure_processing_time
-    def streaming_transcribe(self, **params: Any) -> Generator[WhisperResponse, None, None]:
+    def streaming_transcribe(self, **params: Any) -> Generator[str, None, None]:
         request = TranscriptionRequest.from_dict(params)
 
         self._prepare_transcribe(request)

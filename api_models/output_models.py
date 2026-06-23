@@ -89,15 +89,18 @@ def segments_to_response(
         raise ValueError(f"Unknown response format: {response_format}")
 
 
-def format_as_sse(data: str) -> str:
-    return f"data: {data}\n\n"
-
-
 def segments_to_streaming_response(
     segments: Iterable[Segment],
     transcription_info: TranscriptionInfo,
     response_format: ResponseFormat,
 ) -> Generator["WhisperResponse", None, None]:
+    """Stream one newline-delimited chunk per segment (NDJSON-style).
+
+    Each chunk is the bare payload for the requested format followed by a
+    single ``\\n`` so consumers can split the stream on line boundaries. No
+    SSE (``data: ``) framing is applied; callers that need SSE must add it.
+    """
+
     def segment_responses() -> Generator[str, None, None]:
         for i, segment in enumerate(segments):
             if response_format == ResponseFormat.TEXT:
@@ -114,6 +117,6 @@ def segments_to_streaming_response(
                 data = segments_to_srt(segment, i)
             else:
                 raise ValueError(f"Unknown response format: {response_format}")
-            yield format_as_sse(data)
+            yield f"{data} "
 
     return segment_responses()
