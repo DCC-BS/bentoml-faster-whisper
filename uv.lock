@@ -256,6 +256,7 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "loguru" },
     { name = "numpy" },
+    { name = "nvidia-npp-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "pyannote-audio" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -288,6 +289,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numpy", specifier = ">=2.5.0" },
+    { name = "nvidia-npp-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "pyannote-audio", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.12.2" },
     { name = "python-dotenv", specifier = "~=1.2.0" },
@@ -1372,6 +1374,16 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/c4/120d2dfd92dff2c776d68f361ff8705fdea2ca64e20b612fab0fd3f581ac/nvidia_nccl_cu12-2.28.9-py3-none-manylinux_2_18_aarch64.whl", hash = "sha256:50a36e01c4a090b9f9c47d92cec54964de6b9fcb3362d0e19b8ffc6323c21b60", size = 296766525, upload-time = "2025-11-18T05:49:16.094Z" },
     { url = "https://files.pythonhosted.org/packages/4a/4e/44dbb46b3d1b0ec61afda8e84837870f2f9ace33c564317d59b70bc19d3e/nvidia_nccl_cu12-2.28.9-py3-none-manylinux_2_18_x86_64.whl", hash = "sha256:485776daa8447da5da39681af455aa3b2c2586ddcf4af8772495e7c532c7e5ab", size = 296782137, upload-time = "2025-11-18T05:49:34.248Z" },
+]
+
+[[package]]
+name = "nvidia-npp-cu12"
+version = "12.4.1.87"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/07/eb84630bb58abc8bedf6dff04150000136a7fce9a0d8d26a992731f3aeba/nvidia_npp_cu12-12.4.1.87-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:e6680d2a12beca9ce91e61dd2e6121e8e77e820b09c29a419aa36b84aa7fec3a", size = 281904559, upload-time = "2025-06-05T20:08:56.751Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/8e/efdf6ffa8a63e0bc8c90d1fcbf0cd5d0e8fcc52e68de12fc79c36b587f0e/nvidia_npp_cu12-12.4.1.87-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:a586435420f08a804ebe83c09f2757d53fdee65364f2129e36d7476ab66c6197", size = 282363718, upload-time = "2025-06-05T20:09:19.678Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/91/e5f3067f369ce9ff3b35613a3e14bb230a17d4d1fb62390087ef90d9c235/nvidia_npp_cu12-12.4.1.87-py3-none-win_amd64.whl", hash = "sha256:7c425c400b610eecfb1a08cfc92ecfa4a1927c2ecb691bc26406444c605d30a9", size = 277277230, upload-time = "2025-06-05T20:15:43.459Z" },
 ]
 
 [[package]]

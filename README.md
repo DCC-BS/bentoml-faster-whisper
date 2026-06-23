@@ -96,6 +96,18 @@ The stack is currently pinned to **CUDA 12.8 (cu128)**. `torch`, `torchaudio` an
   diarization (`NameError: name 'AudioDecoder' is not defined`).
 - So torch on linux/win is effectively capped at **2.11** until we move to CUDA 13.
 
+The Docker image uses the slim `nvidia/cuda:*-base-*` flavor rather than
+`-runtime-*`. The pip cu128 wheels bundle most CUDA libs, but **NPP is not
+bundled** and the `base` image doesn't ship it — torchcodec links it
+(`libnppicc.so.12`). Two pieces are needed:
+1. the `nvidia-npp-cu12` dependency (linux/win) installs the lib into the venv;
+2. torchcodec's `.so` has no RPATH to that wheel, so the Dockerfile adds the
+   wheel dir (`.../nvidia/npp/lib`) to `LD_LIBRARY_PATH`.
+
+If you ever switch back to the `-runtime-` image, NPP is on the system loader
+path there, so both the dependency and the `LD_LIBRARY_PATH` line become
+redundant.
+
 **To upgrade to CUDA 13 (cu130):**
 1. Bump the base image in `Dockerfile`: `nvidia/cuda:12.8.0-base-ubuntu24.04`
    → `nvidia/cuda:13.0.0-base-ubuntu24.04`.
@@ -105,9 +117,10 @@ The stack is currently pinned to **CUDA 12.8 (cu128)**. `torch`, `torchaudio` an
    `torchvision`, `torchaudio`, `torchcodec`) to point at it.
 3. Relax/raise the `torchcodec>=0.11` pin (cu130 ships 0.12+, paired with torch
    ≥2.11). Let `torch`/`torchaudio` resolve to their cu130 builds.
-4. `uv lock`, then verify the codec loads:
+4. Swap the NPP wheel to the CUDA-13 series: `nvidia-npp-cu12` → `nvidia-npp-cu13`.
+5. `uv lock`, then verify the codec loads:
    `uv run python -c "from pyannote.audio.core.io import AudioDecoder"`.
-5. Ensure the deploy host has an NVIDIA driver new enough for CUDA 13.
+6. Ensure the deploy host has an NVIDIA driver new enough for CUDA 13.
 
 Compatibility reference: [torchcodec version table](https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec).
 

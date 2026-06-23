@@ -1,4 +1,3 @@
-# 'base' suffices: pip torch/ctranslate2 cu128 wheels bundle their own CUDA libs.
 FROM nvidia/cuda:12.8.0-base-ubuntu24.04
 
 ENV TZ=Europe/Zurich
@@ -22,5 +21,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY . /app
 
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
+
+# torchcodec dlopens libnppicc.so.12 with no RPATH; expose the pip NPP wheel dir.
+ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.13/site-packages/nvidia/npp/lib:${LD_LIBRARY_PATH}
 
 ENTRYPOINT ["uv", "run", "bentoml", "serve", "service:FasterWhisper", "-p", "50001"]

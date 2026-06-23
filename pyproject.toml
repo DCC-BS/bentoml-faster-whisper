@@ -9,6 +9,7 @@ dependencies = [
     "torch>=2.8.0",
     "torchaudio>=2.8.0",
     "torchcodec>=0.11",
+    "nvidia-npp-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
     "pydantic>=2.12.2",
     "requests~=2.33.1",
     "ctranslate2~=4.8.0",
