@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.0-base-ubuntu24.04
+FROM nvidia/cuda:12.9.2-base-ubuntu24.04
 
 ENV TZ=Europe/Zurich
 ENV LANG=de_CH.UTF-8
