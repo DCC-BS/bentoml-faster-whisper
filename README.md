@@ -83,44 +83,38 @@ docker-compose up --build
 
 Documentation: [BentoML to generate an OCI-compliant image](https://docs.bentoml.com/en/latest/guides/containerization.html)
 
-### CUDA / torchcodec version coupling (maintenance note)
+### CUDA version coupling (maintenance note)
 
-The stack is currently pinned to **CUDA 12.8 (cu128)**. `torch`, `torchaudio` and
-`torchcodec` are all routed to the `pytorch-cu128` index in `pyproject.toml`
-(`[tool.uv.sources]`). This coupling is load-bearing:
+This is a **mixed-CUDA stack** on a `nvidia/cuda:13.0.1-runtime-ubuntu24.04` base:
 
-- The cu128 index only ships `torchcodec` up to **0.11.1**, which matches **torch
-  2.11**. If `torchcodec` is left unpinned it resolves to a newer PyPI build
-  (e.g. 0.14.0) compiled for **CUDA 13**, which fails to load at runtime with
-  `libnvrtc.so.13: cannot open shared object file`. That breaks pyannote
-  diarization (`NameError: name 'AudioDecoder' is not defined`).
-- So torch on linux/win is effectively capped at **2.11** until we move to CUDA 13.
+- **torch / torchaudio / torchcodec → CUDA 13 (cu130).** Routed to the `pytorch-cu130`
+  index in `pyproject.toml` (`[tool.uv.sources]`). `torchcodec` from PyPI is built for
+  CUDA 13 and fails to load on a CUDA-12 stack with
+  `libnvrtc.so.13: cannot open shared object file`, which breaks pyannote diarization
+  (`NameError: name 'AudioDecoder' is not defined`). Pinning to cu130 keeps them on a
+  matched build. Note `torchaudio` on cu130 currently caps at **2.11.0**, and torch
+  shares its ABI, so both are pinned to the **2.11.x** train (torchcodec 0.14 needs torch ≥2.11).
+- **ctranslate2 (the faster-whisper engine) → CUDA 12.** ctranslate2 (latest 4.8.x) has
+  **no CUDA-13 build**; it dlopens `libcublas.so.12` and cuDNN 12. Since the cu130 torch
+  wheels bundle cuBLAS **13** and the runtime image ships CUDA 13, nothing provides the
+  `.so.12` it needs — so we install the CUDA-12 libs explicitly via the
+  `nvidia-cublas-cu12` + `nvidia-cudnn-cu12` pip deps. The CUDA-13 driver runs CUDA-12
+  code fine (backward compatible), and the two cuBLAS sonames (`.so.12` / `.so.13`)
+  coexist in one process without conflict.
 
-The Docker image uses the slim `nvidia/cuda:*-base-*` flavor rather than
-`-runtime-*`. The pip cu128 wheels bundle most CUDA libs, but **NPP is not
-bundled** and the `base` image doesn't ship it — torchcodec links it
-(`libnppicc.so.12`). Two pieces are needed:
-1. the `nvidia-npp-cu12` dependency (linux/win) installs the lib into the venv;
-2. torchcodec's `.so` has no RPATH to that wheel, so the Dockerfile adds the
-   wheel dir (`.../nvidia/npp/lib`) to `LD_LIBRARY_PATH`.
+**LD_LIBRARY_PATH:** the ctranslate2 cu12 wheels have no RPATH, so the `Dockerfile`
+adds their dirs (`.../nvidia/cublas/lib`, `.../nvidia/cudnn/lib`) to `LD_LIBRARY_PATH`.
+Torchcodec's NPP (`libnppicc.so.13`) does **not** need this — the `-runtime-` base image
+ships NPP on the system loader path (that's why we use `-runtime-` over the slim `-base-`,
+and why no `nvidia-npp` dep is required). If you ever switch to a `-base-` image, you must
+also re-add an `nvidia-npp` dep and its wheel dir to `LD_LIBRARY_PATH`.
 
-If you ever switch back to the `-runtime-` image, NPP is on the system loader
-path there, so both the dependency and the `LD_LIBRARY_PATH` line become
-redundant.
-
-**To upgrade to CUDA 13 (cu130):**
-1. Bump the base image in `Dockerfile`: `nvidia/cuda:12.8.0-base-ubuntu24.04`
-   → `nvidia/cuda:13.0.0-base-ubuntu24.04`.
-2. In `pyproject.toml`, change the index URL and name:
-   `https://download.pytorch.org/whl/cu128` → `.../cu130`, and update the
-   `pytorch-cu128` index name + all `[tool.uv.sources]` markers (`torch`,
-   `torchvision`, `torchaudio`, `torchcodec`) to point at it.
-3. Relax/raise the `torchcodec>=0.11` pin (cu130 ships 0.12+, paired with torch
-   ≥2.11). Let `torch`/`torchaudio` resolve to their cu130 builds.
-4. Swap the NPP wheel to the CUDA-13 series: `nvidia-npp-cu12` → `nvidia-npp-cu13`.
-5. `uv lock`, then verify the codec loads:
-   `uv run python -c "from pyannote.audio.core.io import AudioDecoder"`.
-6. Ensure the deploy host has an NVIDIA driver new enough for CUDA 13.
+**To bump CUDA further:** the ceiling is set by **ctranslate2** — until it ships a
+CUDA-13 build, the whisper engine stays on the cu12 cuBLAS/cuDNN wheels regardless of the
+base image. For the torch side, retarget the `pytorch-cu130` index name/URL and the
+`[tool.uv.sources]` markers, bump the base image, `uv lock`, then verify the codec loads
+(`uv run python -c "from pyannote.audio.core.io import AudioDecoder"`) and a GPU
+transcription succeeds. Ensure the deploy host driver is new enough for the target CUDA.
 
 Compatibility reference: [torchcodec version table](https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec).
 

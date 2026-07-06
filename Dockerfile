@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.9.2-base-ubuntu24.04
+FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04
 
 ENV TZ=Europe/Zurich
 ENV LANG=de_CH.UTF-8
@@ -22,7 +22,10 @@ COPY . /app
 
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
-# torchcodec dlopens libnppicc.so.12 with no RPATH; expose the pip NPP wheel dir.
-ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.13/site-packages/nvidia/npp/lib:${LD_LIBRARY_PATH}
+# ctranslate2 (faster-whisper engine) is CUDA-12 and dlopens libcublas.so.12 / cuDNN 12
+# with no RPATH to the pip wheels. Torchcodec's NPP (libnppicc.so.13) is already on the
+# system loader path via the CUDA-13 runtime base image, so only the cu12 cuBLAS/cuDNN
+# wheel dirs need exposing here.
+ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.13/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}
 
 ENTRYPOINT ["uv", "run", "bentoml", "serve", "service:FasterWhisper", "-p", "50001"]

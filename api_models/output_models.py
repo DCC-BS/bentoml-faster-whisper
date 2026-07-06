@@ -117,6 +117,6 @@ def segments_to_streaming_response(
                 data = segments_to_srt(segment, i)
             else:
                 raise ValueError(f"Unknown response format: {response_format}")
-            yield f"{data} "
+            yield f"{data}\n"
 
     return segment_responses()

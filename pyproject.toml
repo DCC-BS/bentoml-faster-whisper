@@ -6,10 +6,17 @@ dependencies = [
     "bentoml==1.4.39",
     "fastapi>=0.138.0",
     "faster-whisper==1.2.1",
-    "torch>=2.8.0",
-    "torchaudio>=2.8.0",
-    "torchcodec>=0.11",
-    "nvidia-npp-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
+    # cu130 index caps torchaudio at 2.11.0; torch/torchaudio share an ABI so both
+    # must stay on the same 2.11.x train. torchcodec 0.14 supports torch >=2.11.
+    "torch>=2.11,<2.12",
+    "torchaudio>=2.11,<2.12",
+    "torchcodec>=0.13",
+    # ctranslate2 (the faster-whisper engine) is a CUDA-12 build: it links
+    # libcublas.so.12 and cuDNN 12. The cu130 torch wheels bundle cuBLAS 13 and the
+    # runtime base image ships CUDA 13, so nothing provides the .so.12 ctranslate2
+    # needs. Supply the CUDA-12 libs via pip (exposed on LD_LIBRARY_PATH in Dockerfile).
+    "nvidia-cublas-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
+    "nvidia-cudnn-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
     "pydantic>=2.12.2",
     "requests~=2.34.2",
     "ctranslate2~=4.8.0",
@@ -42,21 +49,18 @@ stage = "production"
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-torchvision = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchaudio = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchcodec = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.pytest.ini_options]
