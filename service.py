@@ -128,10 +128,12 @@ class FasterWhisper:
             self.progress_handler.add_progress(request.progress_id)
             progress_id = request.progress_id
 
+            # Fold the two stages into one monotonic 0..1 value so the bar never resets:
+            # diarization occupies 0..0.3, transcription 0.3..1.0.
             def diarization_progress_callback(fraction: float) -> None:
                 self.progress_handler.update_progress(
                     progress_id,
-                    ProgressResponse(progress=fraction, currentTime=0, duration=0),
+                    ProgressResponse(progress=fraction * 0.3, currentTime=0, duration=0),
                 )
 
         segments, transcription_info = self.handler.prepare_audio_segments(
@@ -144,7 +146,7 @@ class FasterWhisper:
                     self.progress_handler.update_progress(
                         request.progress_id,
                         ProgressResponse(
-                            progress=segment.end / transcription_info.duration,
+                            progress=0.3 + 0.7 * (segment.end / transcription_info.duration),
                             currentTime=segment.end,
                             duration=transcription_info.duration,
                         ),
