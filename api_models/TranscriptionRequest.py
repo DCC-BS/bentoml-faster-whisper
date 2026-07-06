@@ -139,8 +139,9 @@ class TranscriptionRequest(BaseModel):
         description="Resets prompt if temperature is above this value. Arg has effect only if condition_on_previous_text is True.",
     )
     diarization: bool = Field(
-        default=False,
-        description="If True, the model will attempt to separate speakers in the audio.",
+        default=faster_whisper_config.diarization,
+        description="If True, the model will attempt to separate speakers in the audio. The pyannote "
+        "speech turns also replace the Silero VAD: Whisper only decodes the detected speech regions.",
     )
     diarization_speaker_count: Annotated[int, Ge(1), Le(6)] | None = Field(
         default=None,

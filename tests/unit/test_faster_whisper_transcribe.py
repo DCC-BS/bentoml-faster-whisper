@@ -16,6 +16,8 @@ def faster_whisper_service():
 
 
 def _extend_params(**params):
+    # diarization off by default: these tests target the Whisper path, not the pyannote pipeline.
+    params.setdefault("diarization", False)
     return TranscriptionRequest.model_validate(params).model_dump()
 
 

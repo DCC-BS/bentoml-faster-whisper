@@ -1,15 +1,21 @@
 [project]
 name = "bentoml-faster-whisper"
-version = "1.5.2"
+version = "1.6.0"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "bentoml==1.4.39",
     "fastapi>=0.138.0",
     "faster-whisper==1.2.1",
-    "torch>=2.8.0",
-    "torchaudio>=2.8.0",
-    "torchcodec>=0.11",
-    "nvidia-npp-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
+    # cu130 index caps torchaudio at 2.11.0; torch/torchaudio share an ABI so both
+    # must stay on the same 2.11.x train. torchcodec 0.14 supports torch >=2.11.
+    "torch>=2.11,<2.12",
+    "torchaudio>=2.11,<2.12",
+    "torchcodec>=0.13",
+    # ctranslate2 (the faster-whisper engine) is a CUDA-12 build: it dlopens
+    # libcublas.so.12 and libcudnn.so.9. The cu130 torch wheels already bundle
+    # cuBLAS 13 (nvidia/cu13/lib) and cuDNN 9 built for cu13; the Dockerfile symlinks
+    # libcublas.so.12 -> .so.13, which is ABI-compatible for ctranslate2's use
+    # (OpenNMT/CTranslate2#1933), so no separate CUDA-12 pip libs are needed.
     "pydantic>=2.12.2",
     "requests~=2.34.2",
     "ctranslate2~=4.8.0",
@@ -42,21 +48,18 @@ stage = "production"
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-torchvision = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchaudio = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchcodec = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.pytest.ini_options]

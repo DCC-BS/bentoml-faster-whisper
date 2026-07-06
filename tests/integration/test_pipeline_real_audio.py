@@ -28,8 +28,9 @@ def service():
 
 
 def _params(file: Path, **overrides) -> dict:
+    # diarization off: these tests target the Whisper path offline; pyannote needs an HF download.
     return TranscriptionRequest.model_validate(
-        {"file": file, "response_format": ResponseFormat.TEXT, **overrides}
+        {"file": file, "response_format": ResponseFormat.TEXT, "diarization": False, **overrides}
     ).model_dump()
 
 
@@ -52,6 +53,7 @@ def test_real_speech_verbose_json_has_words(service):
             "file": REAL_SPEECH,
             "response_format": ResponseFormat.VERBOSE_JSON,
             "timestamp_granularities": ["word"],
+            "diarization": False,
         }
     ).model_dump()
 
