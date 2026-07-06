@@ -33,7 +33,8 @@ def service():
 
 
 def _request(file: Path, **overrides) -> TranscriptionRequest:
-    params = {"file": file, "response_format": ResponseFormat.JSON, **overrides}
+    # diarization off: these tests target Whisper resource handling, not the pyannote pipeline.
+    params = {"file": file, "response_format": ResponseFormat.JSON, "diarization": False, **overrides}
     return TranscriptionRequest.model_validate(params)
 
 

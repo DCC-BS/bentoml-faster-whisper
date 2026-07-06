@@ -37,7 +37,7 @@ The server is now active at [http://localhost:3000](http://localhost:3000/). Yo
 ```bash
 curl -s \
      -X POST \
-     -F 'audio_file=@female.wav' \
+     -F 'file=@female.wav' \
      http://localhost:3000/v1/audio/transcriptions
 ```
 
@@ -53,6 +53,31 @@ with bentoml.SyncHTTPClient('http://localhost:3000') as client:
 ```
 
 Further examples (task, streaming) how to programmatically interact with the faster_whisper service can be found in `test_integration.py`
+
+### Speaker diarization
+
+The service bundles [pyannote](https://github.com/pyannote/pyannote-audio) speaker diarization
+and runs it **by default** on every transcription. Set `diarization=false` in the request to
+skip it. Diarization needs an `HF_AUTH_TOKEN` env var with access to the
+`pyannote/speaker-diarization-community-1` model.
+
+```bash
+curl -s \
+     -X POST \
+     -F 'file=@meeting.wav' \
+     -F 'response_format=json_diarized' \
+     http://localhost:3000/v1/audio/transcriptions
+```
+
+Set `diarization_speaker_count` (1–6) to fix the number of speakers; leave it unset to let
+pyannote estimate it.
+
+**One VAD, not two.** When diarization is on, pyannote's speech turns double as the voice
+activity detector: Whisper only decodes the detected speech regions (via `clip_timestamps`)
+instead of running its own Silero VAD over the whole file. This avoids two independent VADs
+disagreeing (Silero cutting speech that pyannote labels, or vice versa) and skips redundant
+decoding of silence. Silero (`vad_filter`) is only used as a fallback when diarization is off,
+or when pyannote finds no speech at all. Any input format FFmpeg can decode is accepted.
 
 ### Local Development
 

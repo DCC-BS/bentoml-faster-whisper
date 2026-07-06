@@ -68,6 +68,7 @@ class FasterWhisperConfig(BaseModel):
         min_silence_duration_ms=2000,
         speech_pad_ms=400,
     )
+    diarization: bool = True
     condition_on_previous_text: bool = True
     repetition_penalty: float = 1.0
     length_penalty: float = 1.0

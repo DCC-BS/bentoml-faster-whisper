@@ -11,12 +11,11 @@ dependencies = [
     "torch>=2.11,<2.12",
     "torchaudio>=2.11,<2.12",
     "torchcodec>=0.13",
-    # ctranslate2 (the faster-whisper engine) is a CUDA-12 build: it links
-    # libcublas.so.12 and cuDNN 12. The cu130 torch wheels bundle cuBLAS 13 and the
-    # runtime base image ships CUDA 13, so nothing provides the .so.12 ctranslate2
-    # needs. Supply the CUDA-12 libs via pip (exposed on LD_LIBRARY_PATH in Dockerfile).
-    "nvidia-cublas-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
-    "nvidia-cudnn-cu12; sys_platform == 'linux' or sys_platform == 'win32'",
+    # ctranslate2 (the faster-whisper engine) is a CUDA-12 build: it dlopens
+    # libcublas.so.12 and libcudnn.so.9. The cu130 torch wheels already bundle
+    # cuBLAS 13 (nvidia/cu13/lib) and cuDNN 9 built for cu13; the Dockerfile symlinks
+    # libcublas.so.12 -> .so.13, which is ABI-compatible for ctranslate2's use
+    # (OpenNMT/CTranslate2#1933), so no separate CUDA-12 pip libs are needed.
     "pydantic>=2.12.2",
     "requests~=2.34.2",
     "ctranslate2~=4.8.0",

@@ -1,8 +1,6 @@
 import sys
-from http import HTTPStatus
 from typing import Callable
 
-from bentoml.exceptions import BentoMLException
 from faster_whisper.vad import VadOptions
 
 from api_models.enums import ResponseFormat, Task
@@ -16,7 +14,8 @@ from api_models.output_models import (
 from api_models.TranscriptionRequest import TranscriptionRequest
 from config import WhisperModelConfig
 from core import Segment
-from diarization_service import DiarizationService
+from diarization_service import DiarizationSegment, DiarizationService
+from helpers.speech_regions import diarization_to_clip_timestamps
 from helpers.transcription_cleaner import clean_transcription_segments
 from helpers.whiper_diarization_merger import merge_whipser_diarization
 from model_manager import WhisperModelManager
@@ -97,6 +96,31 @@ class FasterWhisperHandler:
         request: TranscriptionRequest,
         diarization_progress_callback: Callable[[float], None] | None = None,
     ):
+        # Diarize before loading Whisper: pyannote's speech turns double as the VAD for the
+        # decode below, and running it first keeps its GPU peak from overlapping the decode.
+        dia_segments: list[DiarizationSegment] = []
+        if request.diarization:
+            dia_segments = list(
+                self.diarization.diarize(
+                    str(request.file),
+                    request.diarization_speaker_count,
+                    progress_callback=diarization_progress_callback,
+                )
+            )
+
+        # clip_timestamps restricts decoding to the pyannote speech regions (output timestamps
+        # stay on the original timeline, so the merge below still lines up). Silero only remains
+        # as fallback when diarization is off or found no speech at all — an empty clip list
+        # would make faster-whisper decode the entire file, silence included.
+        clip_timestamps = diarization_to_clip_timestamps(dia_segments)
+        if clip_timestamps:
+            vad_kwargs: dict = {"vad_filter": False, "clip_timestamps": clip_timestamps}
+        else:
+            vad_kwargs = {
+                "vad_filter": request.vad_filter,
+                "vad_parameters": VadOptions(**request.vad_parameters.model_dump()),
+            }
+
         # transcribe() returns a lazy generator that only decodes while iterated, so the model ref-count
         # must be held for the lifetime of the returned generator, not just this method call. We enter the
         # context manager here and exit it when the generator is exhausted, closed, or raises.
@@ -111,8 +135,6 @@ class FasterWhisperHandler:
                 word_timestamps="word" in request.timestamp_granularities,
                 best_of=request.best_of,
                 hotwords=request.hotwords,
-                vad_filter=request.vad_filter,
-                vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
                 condition_on_previous_text=request.condition_on_previous_text,
                 beam_size=request.beam_size,
                 patience=request.patience,
@@ -122,23 +144,13 @@ class FasterWhisperHandler:
                 compression_ratio_threshold=request.compression_ratio_threshold,
                 log_prob_threshold=request.log_prob_threshold,
                 prompt_reset_on_temperature=request.prompt_reset_on_temperature,
+                **vad_kwargs,
             )
 
             segments = Segment.from_faster_whisper_segments(segments)
 
-            if request.diarization:
-                if request.file.suffix.lower() in [".wav", ".mp3", ".flac"]:
-                    dia_segments = self.diarization.diarize(
-                        str(request.file),
-                        request.diarization_speaker_count,
-                        progress_callback=diarization_progress_callback,
-                    )
-                    segments = merge_whipser_diarization(segments, dia_segments)
-                else:
-                    raise BentoMLException(
-                        error_code=HTTPStatus.BAD_REQUEST,
-                        message="Diarization is only supported for .wav, .mp3 and .flac files",
-                    )
+            if dia_segments:
+                segments = merge_whipser_diarization(segments, dia_segments)
         except BaseException:
             model_ctx.__exit__(*sys.exc_info())
             raise
