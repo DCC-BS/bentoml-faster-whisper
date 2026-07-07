@@ -145,7 +145,7 @@ class DiarizationService:
             if self.pipeline is not None:
                 return
             logger.info("Loading speaker diarization pipeline")
-            hf_token = os.getenv("HF_AUTH_TOKEN")
+            hf_token = os.getenv("HF_TOKEN")
             pipeline = Pipeline.from_pretrained(  # type: ignore[call-arg]
                 "pyannote/speaker-diarization-community-1",
                 token=hf_token or None,

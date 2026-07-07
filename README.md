@@ -58,7 +58,7 @@ Further examples (task, streaming) how to programmatically interact with the fas
 
 The service bundles [pyannote](https://github.com/pyannote/pyannote-audio) speaker diarization
 and runs it **by default** on every transcription. Set `diarization=false` in the request to
-skip it. Diarization needs an `HF_AUTH_TOKEN` env var with access to the
+skip it. Diarization needs an `HF_TOKEN` env var with access to the
 `pyannote/speaker-diarization-community-1` model.
 
 ```bash
