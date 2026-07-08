@@ -1,5 +1,6 @@
+import dataclasses
 import sys
-from typing import Callable
+from typing import Callable, Iterable
 
 from faster_whisper.vad import VadOptions
 
@@ -15,10 +16,21 @@ from api_models.TranscriptionRequest import TranscriptionRequest
 from config import WhisperModelConfig
 from core import Segment
 from diarization_service import DiarizationSegment, DiarizationService
-from helpers.speech_regions import diarization_to_clip_timestamps
+from helpers.speech_regions import (
+    collapse_audio_to_speech,
+    diarization_to_speech_intervals,
+    restore_and_split_segments,
+)
 from helpers.transcription_cleaner import clean_transcription_segments
 from helpers.whiper_diarization_merger import merge_whipser_diarization
 from model_manager import WhisperModelManager
+
+
+def _strip_words(segments: Iterable[Segment]) -> Iterable[Segment]:
+    """Drop per-word timestamps lazily, after the merge has consumed them."""
+    for seg in segments:
+        seg.words = None
+        yield seg
 
 
 class FasterWhisperHandler:
@@ -108,14 +120,25 @@ class FasterWhisperHandler:
                 )
             )
 
-        # clip_timestamps restricts decoding to the pyannote speech regions (output timestamps
-        # stay on the original timeline, so the merge below still lines up). Silero only remains
-        # as fallback when diarization is off or found no speech at all — an empty clip list
-        # would make faster-whisper decode the entire file, silence included.
-        clip_timestamps = diarization_to_clip_timestamps(dia_segments)
-        if clip_timestamps:
-            vad_kwargs: dict = {"vad_filter": False, "clip_timestamps": clip_timestamps}
+        # Cut the audio down to pyannote's speech turns before decoding — the same mechanism
+        # faster-whisper applies internally for its silero VAD: silence never reaches the
+        # decoder, and restore_and_split_segments() maps the results back onto the original
+        # timeline afterwards, snapping boundaries to the speech regions (so the merge below
+        # still lines up). Passing the regions as clip_timestamps instead is not equivalent:
+        # each clip tail gets zero-padded to a 30s window and the model's timestamp tokens
+        # drift there, unclamped. Word timestamps are always requested with diarization so the
+        # merge assigns speakers per word (and seams can be split); silero only remains as
+        # fallback when diarization is off or found no speech at all — no speech regions would
+        # mean decoding the entire file.
+        intervals = diarization_to_speech_intervals(dia_segments) if dia_segments else []
+        collapsed = collapse_audio_to_speech(str(request.file), intervals) if intervals else None
+        word_timestamps = ("word" in request.timestamp_granularities) or bool(dia_segments)
+
+        if collapsed is not None:
+            audio, speech_chunks, original_duration_s = collapsed
+            vad_kwargs: dict = {"vad_filter": False}
         else:
+            audio = str(request.file)
             vad_kwargs = {
                 "vad_filter": request.vad_filter,
                 "vad_parameters": VadOptions(**request.vad_parameters.model_dump()),
@@ -128,11 +151,11 @@ class FasterWhisperHandler:
         whisper = model_ctx.__enter__()
         try:
             segments, transcription_info = whisper.transcribe(
-                str(request.file),
+                audio,
                 initial_prompt=request.prompt,
                 language=request.language,
                 temperature=request.temperature,
-                word_timestamps="word" in request.timestamp_granularities,
+                word_timestamps=word_timestamps,
                 best_of=request.best_of,
                 hotwords=request.hotwords,
                 condition_on_previous_text=request.condition_on_previous_text,
@@ -147,10 +170,22 @@ class FasterWhisperHandler:
                 **vad_kwargs,
             )
 
-            segments = Segment.from_faster_whisper_segments(segments)
+            if collapsed is not None:
+                # transcribe() saw only the concatenated speech, so its timestamps and reported
+                # duration are on the collapsed timeline: map the timestamps back (clamping and
+                # splitting seam-straddling segments) and report the original file's duration.
+                segments = restore_and_split_segments(segments, speech_chunks, intervals, original_duration_s)
+                transcription_info = dataclasses.replace(transcription_info, duration=original_duration_s)
+            else:
+                segments = Segment.from_faster_whisper_segments(segments)
 
             if dia_segments:
                 segments = merge_whipser_diarization(segments, dia_segments)
+
+            # Word timestamps are requested for every diarized decode, but the response shape must
+            # match the request: drop the words the merge just consumed unless they were asked for.
+            if "word" not in request.timestamp_granularities:
+                segments = _strip_words(segments)
         except BaseException:
             model_ctx.__exit__(*sys.exc_info())
             raise

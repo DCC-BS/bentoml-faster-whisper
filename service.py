@@ -136,11 +136,14 @@ class FasterWhisper:
                     ProgressResponse(progress=fraction * 0.3, currentTime=0, duration=0),
                 )
 
-        segments, transcription_info = self.handler.prepare_audio_segments(
-            request, diarization_progress_callback=diarization_progress_callback
-        )
-
+        # prepare_audio_segments runs eager diarization/decode and can raise on bad input, so it lives
+        # inside the try to guarantee the progress entry registered above is always removed.
+        segments = None
         try:
+            segments, transcription_info = self.handler.prepare_audio_segments(
+                request, diarization_progress_callback=diarization_progress_callback
+            )
+
             for segment in segments:
                 if request.progress_id:
                     self.progress_handler.update_progress(
@@ -153,14 +156,15 @@ class FasterWhisper:
                     )
 
                 result.append(segment)
+
+            result = list(clean_transcription_segments(result, transcription_info))
+            return segments_to_response(result, transcription_info, request.response_format)
         finally:
             # Release the held model ref and progress entry even if the decode raises midway.
-            segments.close()
+            if segments is not None:
+                segments.close()
             if request.progress_id is not None:
                 self.progress_handler.remove_progress(request.progress_id)
-
-        result = list(clean_transcription_segments(result, transcription_info))
-        return segments_to_response(result, transcription_info, request.response_format)
 
     @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)  # type: ignore
     @measure_processing_time

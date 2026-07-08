@@ -160,6 +160,24 @@ def test_task_transcribe_removes_progress_entry(service):
     )
 
 
+def test_task_transcribe_removes_progress_entry_on_prepare_failure(service, monkeypatch):
+    progress_id = "resource-mgmt-prepare-failure"
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("prepare_audio_segments failed")
+
+    monkeypatch.setattr(service.handler, "prepare_audio_segments", boom)
+
+    params = _request(SHORT_AUDIO, progress_id=progress_id).model_dump()
+
+    with pytest.raises(RuntimeError, match="prepare_audio_segments failed"):
+        service.task_transcribe(**params)
+
+    assert progress_id not in service.progress_handler.progress_dict, (
+        "progress entry must be removed when prepare_audio_segments raises"
+    )
+
+
 def test_diarization_batch_sizes_from_env(monkeypatch):
     monkeypatch.setenv("DIARIZATION_SEGMENTATION_BATCH_SIZE", "2")
     monkeypatch.setenv("DIARIZATION_EMBEDDING_BATCH_SIZE", "1")

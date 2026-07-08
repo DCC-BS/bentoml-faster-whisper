@@ -166,5 +166,134 @@ def test_segment_speaker_matches_dominant_word_speaker():
     assert result[0].speaker == "B"  # B dominates by word duration
 
 
+def test_segment_in_pre_pad_snaps_to_upcoming_turn():
+    """A segment entirely in the pre-pad (before the turn starts) snaps to that turn."""
+    # Turn A starts at 1.0; decode window padding places a segment in [0.7, 0.95],
+    # which has zero overlap with A but is only 0.05s away.
+    whisper_segments = [DummyWhisperSegment(start=0.7, end=0.95, words=[])]
+    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A", label="A")]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].speaker == "A"
+
+
+def test_segment_in_post_pad_snaps_to_previous_turn():
+    """A segment entirely in the post-pad (after the turn ends) snaps to that turn."""
+    # Turn A ends at 5.0; segment sits in [5.05, 5.25], 0.05s after A, no overlap.
+    whisper_segments = [DummyWhisperSegment(start=5.05, end=5.25, words=[])]
+    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A", label="A")]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].speaker == "A"
+
+
+def test_segment_between_two_turns_snaps_to_closer():
+    """A segment between two turns, both within tolerance, snaps to the closer one."""
+    # A ends at 1.0, B starts at 1.4. Segment [1.1, 1.15]: 0.1s from A, 0.25s from B.
+    whisper_segments = [DummyWhisperSegment(start=1.1, end=1.15, words=[])]
+    diarization_segments = [
+        DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(1.4, 3), speaker="B", label="B"),
+    ]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].speaker == "A"
+
+
+def test_segment_far_from_any_turn_stays_none():
+    """A segment farther than SPEECH_PAD_S from any turn keeps speaker=None."""
+    # Turn A ends at 1.0; segment at [2.0, 2.1] is 1.0s away — beyond the 0.3s pad.
+    whisper_segments = [DummyWhisperSegment(start=2.0, end=2.1, words=[])]
+    diarization_segments = [DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A")]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].speaker is None
+
+
+def test_words_in_pad_regions_snap_to_turn():
+    """Words in the pre-pad and post-pad of a turn snap to that turn's speaker."""
+    # Turn A covers [1, 5]; decode window is padded to [0.7, 5.3].
+    # w0 is pre-pad, w1 overlaps A, w2 is post-pad.
+    whisper_segments = [
+        DummyWhisperSegment(
+            start=0.7,
+            end=5.3,
+            words=[
+                DummyWord(start=0.7, end=0.95),  # pre-pad, 0.05s before A
+                DummyWord(start=1.5, end=2.0),  # inside A
+                DummyWord(start=5.05, end=5.25),  # post-pad, 0.05s after A
+            ],
+        )
+    ]
+    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A", label="A")]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].words is not None
+    assert result[0].words[0].speaker == "A"
+    assert result[0].words[1].speaker == "A"
+    assert result[0].words[2].speaker == "A"
+    assert result[0].speaker == "A"
+
+
+def test_word_between_two_turns_snaps_to_closer():
+    """A word with no overlap between two turns snaps to the closer turn."""
+    # A covers [0, 1], B covers [1.4, 5]. The middle word [1.1, 1.15] has no overlap:
+    # 0.1s from A vs 0.25s from B, so it snaps to A.
+    whisper_segments = [
+        DummyWhisperSegment(
+            start=0,
+            end=5,
+            words=[
+                DummyWord(start=0.2, end=0.8),  # A
+                DummyWord(start=1.1, end=1.15),  # gap, closer to A
+                DummyWord(start=2.0, end=4.0),  # B
+            ],
+        )
+    ]
+    diarization_segments = [
+        DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(1.4, 5), speaker="B", label="B"),
+    ]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].words is not None
+    assert result[0].words[0].speaker == "A"
+    assert result[0].words[1].speaker == "A"  # snapped to closer turn
+    assert result[0].words[2].speaker == "B"
+
+
+def test_word_far_from_any_turn_stays_none():
+    """A word farther than SPEECH_PAD_S from any turn keeps speaker=None."""
+    # A covers [0, 1], B covers [4, 5]. The middle word [2.0, 2.1] is >0.3s from both.
+    whisper_segments = [
+        DummyWhisperSegment(
+            start=0,
+            end=5,
+            words=[
+                DummyWord(start=0.2, end=0.8),  # A
+                DummyWord(start=2.0, end=2.1),  # silence, far from both
+                DummyWord(start=4.2, end=4.8),  # B
+            ],
+        )
+    ]
+    diarization_segments = [
+        DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(4, 5), speaker="B", label="B"),
+    ]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert result[0].words is not None
+    assert result[0].words[0].speaker == "A"
+    assert result[0].words[1].speaker is None  # too far to snap
+    assert result[0].words[2].speaker == "B"
+
+
 if __name__ == "__main__":
     pytest.main()

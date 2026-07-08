@@ -73,11 +73,12 @@ Set `diarization_speaker_count` (1–6) to fix the number of speakers; leave it 
 pyannote estimate it.
 
 **One VAD, not two.** When diarization is on, pyannote's speech turns double as the voice
-activity detector: Whisper only decodes the detected speech regions (via `clip_timestamps`)
-instead of running its own Silero VAD over the whole file. This avoids two independent VADs
-disagreeing (Silero cutting speech that pyannote labels, or vice versa) and skips redundant
-decoding of silence. Silero (`vad_filter`) is only used as a fallback when diarization is off,
-or when pyannote finds no speech at all. Any input format FFmpeg can decode is accepted.
+activity detector: the audio is cut down to just those speech regions and concatenated so
+silence never reaches the decoder, and Whisper's segment and word timestamps are then mapped
+back onto the original timeline. This avoids two independent VADs disagreeing (Silero cutting
+speech that pyannote labels, or vice versa) and skips redundant decoding of silence. Silero
+(`vad_filter`) is only used as a fallback when diarization is off, or when pyannote finds no
+speech at all. Any input format FFmpeg can decode is accepted.
 
 ### Local Development
 
