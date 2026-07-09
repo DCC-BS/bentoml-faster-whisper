@@ -69,27 +69,59 @@ def speech_intervals_to_chunks(
     return chunks
 
 
-def collapse_audio_to_speech(
-    path: str,
+def collapse_decoded_to_speech(
+    decoded: np.ndarray,
     intervals: Iterable[tuple[float, float]],
     sampling_rate: int = WHISPER_SAMPLE_RATE,
-) -> tuple[np.ndarray, list[dict], float] | None:
-    """Decode ``path`` and cut it down to the given speech intervals — the same
+) -> tuple[np.ndarray, list[dict]] | None:
+    """Cut already-decoded audio down to the given speech intervals — the same
     mechanism faster-whisper applies internally for its silero VAD: silence never
     reaches the decoder, and restore_speech_timestamps() maps the results back onto
     the original timeline afterwards.
 
-    Returns ``(collapsed_audio, speech_chunks, original_duration_s)`` or ``None`` when
-    no usable speech chunk remains (caller must then fall back to another VAD).
+    Returns ``(collapsed_audio, speech_chunks)`` or ``None`` when no usable speech
+    chunk remains (caller must then fall back to another VAD).
     """
-    decoded = decode_audio(path, sampling_rate=sampling_rate)
-    original_duration_s = decoded.shape[0] / sampling_rate
     speech_chunks = speech_intervals_to_chunks(intervals, decoded.shape[0], sampling_rate)
     if not speech_chunks:
         return None
 
     audio = np.concatenate([decoded[c["start"] : c["end"]] for c in speech_chunks])
+    return audio, speech_chunks
+
+
+def collapse_audio_to_speech(
+    path: str,
+    intervals: Iterable[tuple[float, float]],
+    sampling_rate: int = WHISPER_SAMPLE_RATE,
+) -> tuple[np.ndarray, list[dict], float] | None:
+    """Decode ``path`` and collapse it to the given speech intervals; see
+    collapse_decoded_to_speech(). Additionally returns the original duration.
+    """
+    decoded = decode_audio(path, sampling_rate=sampling_rate)
+    original_duration_s = decoded.shape[0] / sampling_rate
+    collapsed = collapse_decoded_to_speech(decoded, intervals, sampling_rate)
+    if collapsed is None:
+        return None
+
+    audio, speech_chunks = collapsed
     return audio, speech_chunks, original_duration_s
+
+
+def group_intervals_by_language(
+    intervals: Iterable[tuple[float, float]],
+    languages: Iterable[str],
+) -> list[tuple[str, list[tuple[float, float]]]]:
+    """Group consecutive speech intervals that detected the same language into
+    decode runs: each run is transcribed as one collapsed decode with its language
+    pinned, so a multilingual file never forces one language onto all speech."""
+    runs: list[tuple[str, list[tuple[float, float]]]] = []
+    for interval, language in zip(intervals, languages, strict=True):
+        if runs and runs[-1][0] == language:
+            runs[-1][1].append(interval)
+        else:
+            runs.append((language, [interval]))
+    return runs
 
 
 def restore_and_split_segments(

@@ -4,13 +4,8 @@ import pytest
 
 from api_models.enums import ResponseFormat
 from api_models.TranslationRequest import TranslationRequest
-from service import FasterWhisper
 
-
-@pytest.fixture(scope="module")
-def faster_whisper_service():
-    """Create a single FasterWhisper instance for all tests in this module."""
-    return FasterWhisper()
+pytestmark = pytest.mark.model
 
 
 def _extend_params(**params):

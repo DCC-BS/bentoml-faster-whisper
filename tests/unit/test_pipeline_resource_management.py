@@ -11,25 +11,19 @@ import pytest
 
 from api_models.enums import ResponseFormat
 from api_models.TranscriptionRequest import TranscriptionRequest
+from config import WhisperModelConfig
 from diarization_service import DiarizationService
-from handlers.fast_whipser_handler import FasterWhisperHandler
 from handlers.progress_handler import ProgressHandler
 from helpers.utils import get_audio_duration
-from model_manager import SelfDisposingModel
-from service import FasterWhisper
+from model_manager import SelfDisposingModel, WhisperModelManager
 
 SHORT_AUDIO = Path("./tests/assets/example_audio.mp3")
 LONG_AUDIO = Path("./tests/assets/long_example_audio.mp3")
 
 
 @pytest.fixture(scope="module")
-def handler() -> FasterWhisperHandler:
-    return FasterWhisperHandler()
-
-
-@pytest.fixture(scope="module")
-def service():
-    return FasterWhisper()
+def service(faster_whisper_service):
+    return faster_whisper_service
 
 
 def _request(file: Path, **overrides) -> TranscriptionRequest:
@@ -38,6 +32,7 @@ def _request(file: Path, **overrides) -> TranscriptionRequest:
     return TranscriptionRequest.model_validate(params)
 
 
+@pytest.mark.model
 def test_model_ref_released_after_full_transcription(handler):
     request = _request(SHORT_AUDIO)
 
@@ -46,9 +41,10 @@ def test_model_ref_released_after_full_transcription(handler):
     assert result is not None
     sdm = handler.model_manager.loaded_models[request.model]
     assert sdm.ref_count == 0, "model ref must return to 0 after a completed transcription"
-    assert sdm.model is not None, "model must stay loaded (ttl>0) for reuse"
+    assert sdm.model is not None, "model must stay loaded (ttl!=0) for reuse"
 
 
+@pytest.mark.model
 def test_model_ref_held_until_generator_consumed(handler):
     request = _request(LONG_AUDIO)
 
@@ -64,6 +60,7 @@ def test_model_ref_held_until_generator_consumed(handler):
     assert sdm.ref_count == 0
 
 
+@pytest.mark.model
 def test_generator_close_releases_model_ref(handler):
     request = _request(LONG_AUDIO)
 
@@ -77,6 +74,7 @@ def test_generator_close_releases_model_ref(handler):
     assert sdm.ref_count == 0, "closing the generator must release the held model ref"
 
 
+@pytest.mark.model
 def test_streaming_endpoint_releases_ref_after_full_stream(service):
     request = _request(LONG_AUDIO)
     request_params = request.model_dump()
@@ -89,6 +87,7 @@ def test_streaming_endpoint_releases_ref_after_full_stream(service):
     assert sdm.ref_count == 0
 
 
+@pytest.mark.model
 def test_concurrent_transcriptions_release_model_ref(handler):
     errors: list[BaseException] = []
     results: list[object] = []
@@ -139,6 +138,31 @@ def test_self_disposing_model_concurrent_ref_counting():
     assert len(loads) == 1, "model must be loaded exactly once despite concurrent access"
 
 
+def test_unload_model_does_not_deadlock(monkeypatch):
+    """unload_model() holds WhisperModelManager._lock while SelfDisposingModel.unload() calls
+    back into _handle_model_unload(), which acquires the same lock. A non-reentrant Lock hangs
+    the calling thread forever. The TTL path never hit this: it unloads from a Timer thread
+    that holds no lock.
+    """
+    manager = WhisperModelManager(WhisperModelConfig(ttl=-1))
+    monkeypatch.setattr(manager, "_load_fn", lambda model_id: object())
+
+    with manager.load_model("dummy"):
+        pass
+
+    unloaded = threading.Event()
+
+    def unload():
+        manager.unload_model("dummy")
+        unloaded.set()
+
+    # daemon so a regression hangs this test rather than the whole interpreter.
+    threading.Thread(target=unload, daemon=True).start()
+
+    assert unloaded.wait(timeout=10), "unload_model() deadlocked re-acquiring the manager lock"
+    assert "dummy" not in manager.loaded_models
+
+
 def test_progress_handler_instances_are_isolated():
     a = ProgressHandler()
     b = ProgressHandler()
@@ -149,6 +173,7 @@ def test_progress_handler_instances_are_isolated():
     assert "task-a" not in b.progress_dict, "progress state must not leak across instances"
 
 
+@pytest.mark.model
 def test_task_transcribe_removes_progress_entry(service):
     progress_id = "resource-mgmt-test"
     params = _request(SHORT_AUDIO, progress_id=progress_id).model_dump()

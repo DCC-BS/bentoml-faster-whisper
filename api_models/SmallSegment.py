@@ -6,3 +6,4 @@ class SmallSegment(BaseModel):
     end: float
     text: str
     speaker: str | None = None
+    language: str | None = None

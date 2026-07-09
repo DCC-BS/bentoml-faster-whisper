@@ -8,6 +8,7 @@ import helpers.speech_regions as sr
 from helpers.speech_regions import (
     collapse_audio_to_speech,
     diarization_to_speech_intervals,
+    group_intervals_by_language,
     restore_and_split_segments,
     speech_intervals_to_chunks,
 )
@@ -199,3 +200,20 @@ def test_restore_clamps_word_boundaries_to_duration():
     assert len(out) == 1
     assert out[0].words[0].end == 1.5
     assert out[0].end == 1.5
+
+
+def test_group_intervals_by_language_groups_consecutive_runs():
+    intervals = [(0.0, 5.0), (6.0, 10.0), (12.0, 20.0), (21.0, 25.0)]
+    languages = ["de", "de", "en", "de"]
+
+    assert group_intervals_by_language(intervals, languages) == [
+        ("de", [(0.0, 5.0), (6.0, 10.0)]),
+        ("en", [(12.0, 20.0)]),
+        ("de", [(21.0, 25.0)]),
+    ]
+
+
+def test_group_intervals_by_language_single_language_is_one_run():
+    intervals = [(0.0, 5.0), (6.0, 10.0)]
+
+    assert group_intervals_by_language(intervals, ["de", "de"]) == [("de", [(0.0, 5.0), (6.0, 10.0)])]

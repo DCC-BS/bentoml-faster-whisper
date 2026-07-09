@@ -15,10 +15,11 @@ from faster_whisper.audio import decode_audio
 
 from api_models.enums import ResponseFormat
 from api_models.TranscriptionRequest import TranscriptionRequest
-from handlers.fast_whipser_handler import FasterWhisperHandler
 from helpers.speech_regions import WHISPER_SAMPLE_RATE
 
 LONG_AUDIO = Path("./tests/assets/long_example_audio.mp3")
+
+pytestmark = pytest.mark.model
 
 
 class _FakeTurn:
@@ -46,10 +47,7 @@ def fake_turns(audio_duration) -> list[_FakeTurn]:
 
 
 @pytest.fixture(scope="module")
-def diarized_segments(audio_duration, fake_turns):
-    handler = FasterWhisperHandler()
-    handler.diarization.diarize = lambda *args, **kwargs: iter(fake_turns)
-
+def diarized_segments(handler, audio_duration, fake_turns):
     request = TranscriptionRequest.model_validate(
         {
             "file": LONG_AUDIO,
@@ -57,8 +55,11 @@ def diarized_segments(audio_duration, fake_turns):
             "diarization": True,
         }
     )
-    segments, info = handler.prepare_audio_segments(request)
-    return list(segments), info
+    # handler is session-scoped and shared, so the stub must not outlive this transcription.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(handler.diarization, "diarize", lambda *args, **kwargs: iter(fake_turns))
+        segments, info = handler.prepare_audio_segments(request)
+        return list(segments), info
 
 
 def _speech_windows(fake_turns) -> list[tuple[float, float]]:
