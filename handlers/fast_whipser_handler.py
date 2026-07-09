@@ -19,12 +19,18 @@ from api_models.TranscriptionRequest import TranscriptionRequest
 from config import WhisperModelConfig
 from core import Segment
 from diarization_service import DiarizationSegment, DiarizationService
+from helpers.language_id import (
+    detect_turn_language_probs,
+    fill_missing_rows_from_intervals,
+    resolve_language_inventory,
+    viterbi_smooth_languages,
+)
 from helpers.speech_regions import (
     WHISPER_SAMPLE_RATE,
     collapse_decoded_to_speech,
     diarization_to_speech_intervals,
-    group_intervals_by_language,
     restore_and_split_segments,
+    turns_to_language_runs,
 )
 from helpers.transcription_cleaner import clean_transcription_segments
 from helpers.whiper_diarization_merger import merge_whipser_diarization
@@ -154,11 +160,19 @@ class FasterWhisperHandler:
         try:
             decode_options = self._decode_options(request, word_timestamps)
             if collapsed is not None and request.language is None:
-                # No language given: detect it per speech region so multilingual audio
+                # No language given: detect it per speaker turn so multilingual audio
                 # gets each region transcribed in its own language.
                 assert decoded is not None  # collapsed is derived from decoded
+                turns = sorted((max(t.start, 0.0), t.end) for t in dia_segments if t.end > t.start)
+                candidates = [str(c) for c in request.language_candidates] if request.language_candidates else None
                 segments, transcription_info = self._transcribe_language_runs(
-                    whisper, decoded, collapsed, intervals, original_duration_s, decode_options
+                    whisper,
+                    decoded,
+                    collapsed,
+                    turns,
+                    original_duration_s,
+                    decode_options,
+                    language_candidates=candidates,
                 )
             elif collapsed is not None:
                 audio, speech_chunks = collapsed
@@ -220,48 +234,37 @@ class FasterWhisperHandler:
             prompt_reset_on_temperature=request.prompt_reset_on_temperature,
         )
 
-    # Speech intervals shorter than this detect language unreliably; they inherit the
-    # language of the preceding interval instead (or the first detected one).
-    _MIN_LANGUAGE_DETECTION_S = 0.5
-
     def _transcribe_language_runs(
         self,
         whisper: WhisperModel,
         decoded: np.ndarray,
         collapsed: tuple[np.ndarray, list[dict]],
-        intervals: list[tuple[float, float]],
+        turns: list[tuple[float, float]],
         original_duration_s: float,
         decode_options: dict,
+        language_candidates: list[str] | None = None,
     ):
-        """Detect the language of each speech interval and decode consecutive
-        same-language intervals as one collapsed run, so a speaker switching
-        languages mid-file gets every region transcribed in its own language.
-        Timestamps of every run are restored onto the original timeline, and each
-        emitted segment is tagged with its run's language."""
-        min_samples = int(self._MIN_LANGUAGE_DETECTION_S * WHISPER_SAMPLE_RATE)
-        languages: list[str | None] = []
-        for start_s, end_s in intervals:
-            chunk = decoded[int(start_s * WHISPER_SAMPLE_RATE) : int(end_s * WHISPER_SAMPLE_RATE)]
-            if chunk.shape[0] < min_samples:
-                languages.append(None)
-                continue
-            language, _, _ = whisper.detect_language(audio=chunk)
-            languages.append(language)
+        """Detect the language of each speaker turn (batched, smoothed over the
+        whole file) and decode consecutive same-language turns as one collapsed
+        run, so a speaker switching languages mid-file gets every region
+        transcribed in its own language. Timestamps of every run are restored
+        onto the original timeline, and each emitted segment is tagged with its
+        run's language."""
+        durations = [end - start for start, end in turns]
+        prob_rows = detect_turn_language_probs(whisper, decoded, turns)
+        prob_rows = fill_missing_rows_from_intervals(whisper, decoded, turns, prob_rows)
 
-        # Fill intervals too short for detection: inherit the previous interval's
-        # language, leading ones the first detected. If nothing was long enough,
-        # detect once on all collapsed speech, like the single-language path would.
-        first_detected = next((language for language in languages if language), None)
-        if first_detected is None:
-            first_detected, _, _ = whisper.detect_language(audio=collapsed[0])
-        resolved: list[str] = []
-        previous = first_detected
-        for language in languages:
-            previous = language or previous
-            resolved.append(previous)
+        if any(row is not None for row in prob_rows):
+            inventory = resolve_language_inventory(prob_rows, durations, language_candidates)
+            resolved = viterbi_smooth_languages(prob_rows, durations, inventory)
+        else:
+            # No turn long enough to detect on: detect once on all collapsed
+            # speech, like the single-language path would.
+            language, _, _ = whisper.detect_language(audio=collapsed[0])
+            resolved = [language] * len(turns)
 
         runs = []
-        for language, run_intervals in group_intervals_by_language(intervals, resolved):
+        for language, run_intervals in turns_to_language_runs(turns, resolved):
             run_collapsed = collapse_decoded_to_speech(decoded, run_intervals)
             if run_collapsed is None:
                 continue

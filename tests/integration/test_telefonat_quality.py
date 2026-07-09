@@ -24,8 +24,9 @@ from tests.fuzzy_match import (
 pytestmark = pytest.mark.integration
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
-AUDIO = ASSETS / "Telefonat.m4a"
-REFERENCE = load_reference(ASSETS / "telefonat_transcript.json")
+INTERNAL_ASSETS = ASSETS / "internal"
+AUDIO = INTERNAL_ASSETS / "Telefonat.m4a"
+REFERENCE = load_reference(INTERNAL_ASSETS / "telefonat_transcript.json")
 
 MIN_TEXT_SIMILARITY = 0.75
 MIN_SPEAKER_AGREEMENT = 0.80

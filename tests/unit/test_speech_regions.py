@@ -126,7 +126,9 @@ def test_collapse_audio_to_speech_concatenates_only_speech(monkeypatch):
     decoded = np.arange(160000, dtype=np.float32)  # 10s at 16 kHz
     monkeypatch.setattr(sr, "decode_audio", lambda path, sampling_rate: decoded)
 
-    audio, chunks, duration = collapse_audio_to_speech("x.wav", [(0.0, 1.0), (5.0, 6.0)], 16000)
+    collapsed = collapse_audio_to_speech("x.wav", [(0.0, 1.0), (5.0, 6.0)], 16000)
+    assert collapsed is not None
+    audio, chunks, duration = collapsed
 
     assert duration == 10.0
     assert chunks == [{"start": 0, "end": 16000}, {"start": 80000, "end": 96000}]
@@ -172,6 +174,7 @@ def test_restore_keeps_single_region_segment_intact():
     out = list(restore_and_split_segments([seg], speech_chunks, intervals, 2.0, 16000))
 
     assert len(out) == 1
+    assert out[0].words is not None
     assert [w.word for w in out[0].words] == [" a", " b"]
     assert out[0].id == 0
 
@@ -198,6 +201,7 @@ def test_restore_clamps_word_boundaries_to_duration():
     out = list(restore_and_split_segments([seg], speech_chunks, intervals, 1.5, 16000))
 
     assert len(out) == 1
+    assert out[0].words is not None
     assert out[0].words[0].end == 1.5
     assert out[0].end == 1.5
 

@@ -1,11 +1,12 @@
 from types import SimpleNamespace
+from typing import Any
 
 from core import Segment
 from helpers.transcription_cleaner import clean_transcription_segments
 
 
-def _segment(**overrides):
-    defaults = dict(
+def _segment(**overrides: Any) -> Segment:
+    defaults: dict[str, Any] = dict(
         id=0,
         seek=0,
         start=0.0,

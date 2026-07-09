@@ -1,3 +1,4 @@
+import math
 from typing import Iterable, Protocol
 
 import numpy as np
@@ -38,10 +39,28 @@ def diarization_to_speech_intervals(
     to another VAD then, because transcribing without any speech region would mean
     decoding the whole file, silence included.
     """
-    intervals = sorted((max(s.start - pad_s, 0.0), s.end + pad_s) for s in segments if s.end > s.start)
+    return pad_and_merge_intervals(((s.start, s.end) for s in segments), pad_s, merge_gap_s)
+
+
+def pad_and_merge_intervals(
+    intervals: Iterable[tuple[float, float]],
+    pad_s: float = SPEECH_PAD_S,
+    merge_gap_s: float = MERGE_GAP_S,
+    lower_bound_s: float = 0.0,
+    upper_bound_s: float = math.inf,
+) -> list[tuple[float, float]]:
+    """Pad each (start, end) interval by ``pad_s``, clamp everything into
+    [lower_bound_s, upper_bound_s], and merge overlaps and gaps <= ``merge_gap_s``
+    into sorted non-overlapping intervals. Intervals emptied by the clamp are dropped.
+    """
+    padded = sorted(
+        (max(start - pad_s, lower_bound_s), min(end + pad_s, upper_bound_s)) for start, end in intervals if end > start
+    )
 
     merged: list[list[float]] = []
-    for start, end in intervals:
+    for start, end in padded:
+        if end <= start:
+            continue
         if merged and start - merged[-1][1] <= merge_gap_s:
             merged[-1][1] = max(merged[-1][1], end)
         else:
@@ -124,6 +143,38 @@ def group_intervals_by_language(
     return runs
 
 
+def turns_to_language_runs(
+    turns: list[tuple[float, float]],
+    languages: list[str],
+    pad_s: float = SPEECH_PAD_S,
+    merge_gap_s: float = MERGE_GAP_S,
+) -> list[tuple[str, list[tuple[float, float]]]]:
+    """Group consecutive same-language turns into decode runs and pad/merge each
+    run's turns into speech intervals.
+
+    Padding is clamped at run boundaries to the midpoint between the adjacent
+    turns: neighbouring runs of different languages can be closer than the pad
+    (or even overlap, in crosstalk), and without the clamp the same audio would
+    be decoded twice, once per language.
+    """
+    grouped = group_intervals_by_language(turns, languages)
+
+    runs: list[tuple[str, list[tuple[float, float]]]] = []
+    for i, (language, run_turns) in enumerate(grouped):
+        lower = 0.0
+        if i > 0:
+            previous_end = grouped[i - 1][1][-1][1]
+            lower = max(0.0, (previous_end + run_turns[0][0]) / 2)
+        upper = math.inf
+        if i + 1 < len(grouped):
+            next_start = grouped[i + 1][1][0][0]
+            upper = (run_turns[-1][1] + next_start) / 2
+        intervals = pad_and_merge_intervals(run_turns, pad_s, merge_gap_s, lower, upper)
+        if intervals:
+            runs.append((language, intervals))
+    return runs
+
+
 def restore_and_split_segments(
     fw_segments: Iterable,
     speech_chunks: list[dict],
@@ -188,7 +239,7 @@ def _split_segment_by_intervals(seg: Segment, intervals: list[tuple[float, float
     current: list[Word] = []
     current_idx: int | None = None
 
-    for word in seg.words:
+    for word in seg.words or []:
         idx = _interval_index(intervals, (word.start + word.end) / 2)
         if idx is None:
             idx = current_idx

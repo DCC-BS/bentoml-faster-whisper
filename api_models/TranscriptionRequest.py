@@ -43,6 +43,24 @@ def _process_empty_language(language: None | Language | str | bytes) -> Language
 ValidatedLanguage = Annotated[Language | None, BeforeValidator(_process_empty_language)]
 
 
+def _process_language_candidates(value: Any) -> Any:
+    """Accept a comma-separated string (or bytes) besides a plain list; empty means None.
+
+    Unlike ``language``, an invalid code raises instead of silently falling back to the
+    default language: the caller is explicitly constraining detection, and a typo must
+    not quietly change which languages are considered."""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        value = [item.strip() for item in value.split(",") if item.strip()]
+    if not value:
+        return None
+    return value
+
+
+ValidatedLanguageCandidates = Annotated[list[Language] | None, BeforeValidator(_process_language_candidates)]
+
+
 class TranscriptionRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -64,6 +82,14 @@ class TranscriptionRequest(BaseModel):
         default=faster_whisper_config.default_language,
         description='The language spoken in the audio. It should be a language code such as "en" or "fr". If '
         "not set, the language will be detected in the first 30 secondss of audio.",
+    )
+    language_candidates: ValidatedLanguageCandidates = Field(
+        default=None,
+        validation_alias=AliasChoices("language_candidates", "language_candidates[]"),
+        description="Languages the audio may contain, as language codes (list or comma-separated string, "
+        'e.g. "de,fr"). Only used when `language` is not set and `diarization` is enabled: per-region '
+        "language detection is then restricted to these candidates. If not set, the candidate set is "
+        "derived from the audio itself.",
     )
     prompt: str = Field(
         default=faster_whisper_config.default_prompt,

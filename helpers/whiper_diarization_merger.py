@@ -1,4 +1,5 @@
-from typing import Any, Iterable, Optional
+import copy
+from typing import Iterable, Optional
 
 from core import Segment as WhisperSegment
 from diarization_service import DiarizationSegment
@@ -111,13 +112,45 @@ def _nearest_speaker(
     return best_speaker
 
 
-def _majority_speaker(words: list[Any], word_speakers: list[Optional[str]]) -> Optional[str]:
-    """Return the speaker covering the most total word duration."""
-    duration: dict[str, float] = {}
-    for word, speaker in zip(words, word_speakers):
-        if speaker is not None:
-            duration[speaker] = duration.get(speaker, 0.0) + (word.end - word.start)
-    return max(duration, key=duration.__getitem__) if duration else None
+def _split_segment_by_speaker(
+    seg: WhisperSegment,
+    word_speakers: list[Optional[str]],
+) -> Iterable[WhisperSegment]:
+    """Split ``seg`` where consecutive words were assigned different speakers.
+
+    Whisper's own segmentation knows nothing about speakers: in a fast exchange
+    whose turns were merged into one decode window, a single segment can span
+    several pyannote turns. Flattening it to one majority speaker would erase
+    the alternation, so instead the segment is cut at every word-level speaker
+    change. Words without a speaker (landed in a turn's padding) never force a
+    split — they stay with the running group (and a leading unassigned word
+    joins the first speaker's group).
+    """
+    groups: list[tuple[Optional[str], list]] = []
+    for word, speaker in zip(seg.words or [], word_speakers):
+        if groups and (speaker is None or groups[-1][0] is None or speaker == groups[-1][0]):
+            group_speaker, group_words = groups[-1]
+            group_words.append(word)
+            if group_speaker is None:
+                groups[-1] = (speaker, group_words)
+        else:
+            groups.append((speaker, [word]))
+
+    if len(groups) <= 1:
+        if groups and groups[0][0]:
+            seg.speaker = groups[0][0]
+        yield seg
+        return
+
+    for speaker, words in groups:
+        # whisper word tokens carry their leading spaces, so join reproduces the text exactly.
+        piece = copy.copy(seg)
+        piece.start = words[0].start
+        piece.end = words[-1].end
+        piece.text = "".join(word.word for word in words)
+        piece.words = words
+        piece.speaker = speaker
+        yield piece
 
 
 def merge_whipser_diarization(
@@ -125,6 +158,7 @@ def merge_whipser_diarization(
     diarization_segments: Iterable[DiarizationSegment],
 ) -> Iterable[WhisperSegment]:
     diarization_segments_peekable = _PeekWithMemory(diarization_segments)
+    next_id = 0
 
     for seg in whisper_segments:
         # Materialise candidates once — safe because _pack_segements_in_range
@@ -160,10 +194,12 @@ def merge_whipser_diarization(
                 if best_word_speaker:
                     word.speaker = best_word_speaker
 
-            # Derive segment speaker from words so segment and words are consistent.
-            majority = _majority_speaker(seg.words, word_speakers)
-            if majority:
-                seg.speaker = majority
+            # Cut the segment at speaker changes so every emitted segment carries
+            # exactly one speaker; segment and word speakers stay consistent.
+            for piece in _split_segment_by_speaker(seg, word_speakers):
+                piece.id = next_id
+                next_id += 1
+                yield piece
         else:
             best_speaker = _find_best_speaker(iter(candidates), seg.start, seg.end)
             if best_speaker is None:
@@ -171,4 +207,6 @@ def merge_whipser_diarization(
             if best_speaker:
                 seg.speaker = best_speaker
 
-        yield seg
+            seg.id = next_id
+            next_id += 1
+            yield seg

@@ -80,6 +80,73 @@ speech that pyannote labels, or vice versa) and skips redundant decoding of sile
 (`vad_filter`) is only used as a fallback when diarization is off, or when pyannote finds no
 speech at all. Any input format FFmpeg can decode is accepted.
 
+After decoding, each word is assigned a `speaker` by matching it against the diarization
+turn with the largest time overlap (nearest turn as a fallback for words that land entirely
+inside a turn's padding), and segments are split wherever their words alternate speakers —
+so every returned segment carries exactly one speaker, even in fast exchanges whose turns
+were decoded as a single window. Speaker labels appear in the `json_diarized` and
+`verbose_json` response formats.
+
+### Multi-language audio
+
+When diarization is enabled and no `language` is given, the service does not force one
+detected language over the whole file. Instead it runs a turn-level language identification
+pipeline (`helpers/language_id.py`), built for meetings where speakers switch languages —
+even the same speaker within seconds:
+
+1. **Per-turn detection, batched.** Every pyannote speaker turn ≥ 2s gets a full Whisper
+   language probability distribution. The mel windows of all turns are encoded in GPU
+   batches (instead of one sequential encoder pass per region), and turns longer than 30s
+   average the distributions of all their windows rather than trusting the first one.
+2. **Short-turn fallback.** Turns too short to detect on reliably (< 2s — Whisper's language
+   ID is untrustworthy there) get the distribution of their surrounding merged speech
+   interval, so fast two-speaker exchanges still detect; isolated short blips are resolved
+   from context in step 4.
+3. **Language inventory.** The per-turn distributions are aggregated (duration-weighted)
+   into the set of languages the file plausibly contains. A language enters with either
+   ≥ 15% of the total speech mass or ≥ 15 probability-weighted seconds outright — so a
+   minute of French in a 45-minute German meeting survives, while a one-off "russian"
+   detected on a noise turn never does. Passing `language_candidates` skips this step and
+   pins the set explicitly.
+4. **Viterbi smoothing.** Each turn is assigned a language from the inventory by Viterbi
+   decoding: a turn's own detection counts proportionally to its duration (capped), and
+   every language switch between adjacent turns costs a penalty. Isolated misdetections
+   inside a same-language stretch get flipped; genuine sustained switches survive.
+5. **Per-run decoding.** Consecutive same-language turns are decoded together as one
+   collapsed run with the language pinned, and timestamps are restored onto the original
+   timeline. Each response segment carries its `language`; the top-level `language` is the
+   one covering the most speech time.
+
+```bash
+curl -s \
+     -X POST \
+     -F 'file=@meeting.wav' \
+     -F 'response_format=json_diarized' \
+     -F 'language_candidates=de,fr' \
+     http://localhost:3000/v1/audio/transcriptions
+```
+
+`language_candidates` (list or comma-separated codes) restricts detection to the given
+languages — recommended whenever the deployment knows what can occur (e.g. a Swiss de/fr
+meeting). An invalid code is rejected with a validation error rather than silently ignored.
+It only applies when `language` is unset and diarization is on; setting `language` disables
+per-region detection entirely.
+
+#### Tuning
+
+The pipeline's tunables live in `config.py` (`LanguageIdConfig`) and can be overridden via
+environment variables (e.g. in `.env`). Invalid values fail at startup instead of being
+silently replaced.
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `LID_MIN_TURN_S` | `2.0` | Minimum turn length (s) to detect language on directly. |
+| `LID_BATCH_SIZE` | `8` | Encoder batch size for detection windows (bounds peak GPU memory). |
+| `LID_INVENTORY_MASS_SHARE` | `0.15` | Share of total speech mass admitting a language into the inventory. |
+| `LID_MIN_LANGUAGE_MASS_S` | `15.0` | Absolute mass (s) that also admits a language, regardless of share. |
+| `LID_SWITCH_PENALTY` | `2.0` | Viterbi cost of a language switch between adjacent turns. |
+| `LID_EVIDENCE_CAP_S` | `10.0` | Cap (s) on a single turn's own detection weight in the smoothing. |
+
 ### Local Development
 
 To debug through the FasterWhisper service, you can run the service with the following script:

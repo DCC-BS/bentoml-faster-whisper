@@ -42,7 +42,9 @@ def diarizing_handler(handler):
 
 def _transcribe(handler: FasterWhisperHandler, **overrides) -> dict:
     request = TranscriptionRequest.model_validate({"file": AUDIO, "diarization": True, **overrides})
-    return json.loads(handler.transcribe_audio(request))
+    response = handler.transcribe_audio(request)
+    assert isinstance(response, str)  # json response formats serialize to a JSON string
+    return json.loads(response)
 
 
 @pytest.fixture(scope="module")
