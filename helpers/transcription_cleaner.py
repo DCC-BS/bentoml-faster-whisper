@@ -15,14 +15,15 @@ NO_SPEECH_PROB_THRESHOLD = 0.9
 def clean_transcription_segments(
     whisper_segments: Iterable[WhisperSegment], transcription_info: TranscriptionInfo
 ) -> Iterable[WhisperSegment]:
-    language = transcription_info.language
     log_prob_threshold = transcription_info.transcription_options.log_prob_threshold
     for segment in whisper_segments:
         if segment.no_speech_prob > NO_SPEECH_PROB_THRESHOLD and (
             log_prob_threshold is None or segment.avg_logprob < log_prob_threshold
         ):
             continue
-        if detect_hallucinations(segment.text.strip(), language):
+        # transcription_info.language is the majority language of a multilingual file; a segment
+        # decoded in another language must be matched against that language's blacklist.
+        if detect_hallucinations(segment.text.strip(), segment.language or transcription_info.language):
             continue
         segment.text = segment.text.replace("ß", "ss")
         yield segment

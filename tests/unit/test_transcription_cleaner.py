@@ -58,6 +58,21 @@ def test_drops_known_hallucination():
     assert list(clean_transcription_segments(segments, _info())) == []
 
 
+def test_drops_hallucination_in_segment_language_not_majority_language():
+    # Multilingual file: the top-level language is the majority one, but a segment
+    # decoded in another language must be matched against that language's blacklist.
+    segments = [_segment(text=" www.mooji.org", language="en")]
+
+    assert list(clean_transcription_segments(segments, _info(language="de"))) == []
+
+
+def test_keeps_text_that_is_only_a_hallucination_in_another_language():
+    segments = [_segment(text=" Untertitel der Amara.org-Community", language="en")]
+
+    (segment,) = clean_transcription_segments(segments, _info(language="de"))
+    assert segment.text == " Untertitel der Amara.org-Community"
+
+
 def test_replaces_eszett():
     (segment,) = clean_transcription_segments([_segment(text=" Strauße")], _info())
 
