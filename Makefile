@@ -14,8 +14,18 @@ check: ## Run code quality tools.
 	@uv run ty check .
 
 .PHONY: test
-test: ## Test the code with pytest (excludes integration tests)
+test: ## Test the code with pytest (fast unit tests, no model loaded)
 	@echo "🚀 Testing code: Running pytest"
+	@uv run --env-file .env python -m pytest -m "not integration and not model"
+
+.PHONY: test-model
+test-model: ## Run the unit tests that load a real Whisper model (slow, needs a GPU)
+	@echo "🚀 Testing code: Running model-backed unit tests"
+	@uv run --env-file .env python -m pytest -m "model and not integration"
+
+.PHONY: test-all
+test-all: ## Run every unit test, model-backed ones included
+	@echo "🚀 Testing code: Running all unit tests"
 	@uv run --env-file .env python -m pytest -m "not integration"
 
 .PHONY: integration
@@ -49,6 +59,11 @@ docker-down: ## Stop and remove the Docker container
 run: ## Run the BentoML service
 	@echo "🚀 Running the BentoML service"
 	@uv run --env-file .env bentoml serve service:FasterWhisper -p 50001
+
+.PHONY: diagnose-ui
+diagnose-ui: ## Launch the Gradio UI comparing raw pyannote turns to the full pipeline output
+	@echo "🚀 Launching the diagnosis UI"
+	@uv run --env-file .env python tools/diagnose_ui.py
 
 .PHONY: help
 help:

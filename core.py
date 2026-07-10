@@ -56,6 +56,9 @@ class Segment(BaseModel):
     no_speech_prob: float
     words: list[Word] | None
     speaker: str | None = None
+    language: str | None = None
+    """Per-segment decode language; only set when the language was auto-detected per
+    speech region (diarized request without an explicit language)."""
 
     @classmethod
     def from_faster_whisper_segments(cls, segments: Iterable[faster_whisper.transcribe.Segment]) -> Iterable[Segment]:

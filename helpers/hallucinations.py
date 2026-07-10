@@ -84,5 +84,10 @@ HALLUCINATIONS = {
 }
 
 
+# The blacklist entries keep Whisper's leading token space, but matching happens on
+# stripped text — compare stripped-to-stripped or the padded entries never match.
+_STRIPPED_HALLUCINATIONS = {language: {text.strip() for text in texts} for language, texts in HALLUCINATIONS.items()}
+
+
 def detect_hallucinations(text: str, language: str) -> bool:
-    return text.strip() in HALLUCINATIONS.get(language, set())
+    return text.strip() in _STRIPPED_HALLUCINATIONS.get(language, set())

@@ -1,3 +1,4 @@
+import math
 from typing import Iterable, Protocol
 
 import numpy as np
@@ -38,10 +39,28 @@ def diarization_to_speech_intervals(
     to another VAD then, because transcribing without any speech region would mean
     decoding the whole file, silence included.
     """
-    intervals = sorted((max(s.start - pad_s, 0.0), s.end + pad_s) for s in segments if s.end > s.start)
+    return pad_and_merge_intervals(((s.start, s.end) for s in segments), pad_s, merge_gap_s)
+
+
+def pad_and_merge_intervals(
+    intervals: Iterable[tuple[float, float]],
+    pad_s: float = SPEECH_PAD_S,
+    merge_gap_s: float = MERGE_GAP_S,
+    lower_bound_s: float = 0.0,
+    upper_bound_s: float = math.inf,
+) -> list[tuple[float, float]]:
+    """Pad each (start, end) interval by ``pad_s``, clamp everything into
+    [lower_bound_s, upper_bound_s], and merge overlaps and gaps <= ``merge_gap_s``
+    into sorted non-overlapping intervals. Intervals emptied by the clamp are dropped.
+    """
+    padded = sorted(
+        (max(start - pad_s, lower_bound_s), min(end + pad_s, upper_bound_s)) for start, end in intervals if end > start
+    )
 
     merged: list[list[float]] = []
-    for start, end in intervals:
+    for start, end in padded:
+        if end <= start:
+            continue
         if merged and start - merged[-1][1] <= merge_gap_s:
             merged[-1][1] = max(merged[-1][1], end)
         else:
@@ -69,27 +88,91 @@ def speech_intervals_to_chunks(
     return chunks
 
 
-def collapse_audio_to_speech(
-    path: str,
+def collapse_decoded_to_speech(
+    decoded: np.ndarray,
     intervals: Iterable[tuple[float, float]],
     sampling_rate: int = WHISPER_SAMPLE_RATE,
-) -> tuple[np.ndarray, list[dict], float] | None:
-    """Decode ``path`` and cut it down to the given speech intervals — the same
+) -> tuple[np.ndarray, list[dict]] | None:
+    """Cut already-decoded audio down to the given speech intervals — the same
     mechanism faster-whisper applies internally for its silero VAD: silence never
     reaches the decoder, and restore_speech_timestamps() maps the results back onto
     the original timeline afterwards.
 
-    Returns ``(collapsed_audio, speech_chunks, original_duration_s)`` or ``None`` when
-    no usable speech chunk remains (caller must then fall back to another VAD).
+    Returns ``(collapsed_audio, speech_chunks)`` or ``None`` when no usable speech
+    chunk remains (caller must then fall back to another VAD).
     """
-    decoded = decode_audio(path, sampling_rate=sampling_rate)
-    original_duration_s = decoded.shape[0] / sampling_rate
     speech_chunks = speech_intervals_to_chunks(intervals, decoded.shape[0], sampling_rate)
     if not speech_chunks:
         return None
 
     audio = np.concatenate([decoded[c["start"] : c["end"]] for c in speech_chunks])
+    return audio, speech_chunks
+
+
+def collapse_audio_to_speech(
+    path: str,
+    intervals: Iterable[tuple[float, float]],
+    sampling_rate: int = WHISPER_SAMPLE_RATE,
+) -> tuple[np.ndarray, list[dict], float] | None:
+    """Decode ``path`` and collapse it to the given speech intervals; see
+    collapse_decoded_to_speech(). Additionally returns the original duration.
+    """
+    decoded = decode_audio(path, sampling_rate=sampling_rate)
+    original_duration_s = decoded.shape[0] / sampling_rate
+    collapsed = collapse_decoded_to_speech(decoded, intervals, sampling_rate)
+    if collapsed is None:
+        return None
+
+    audio, speech_chunks = collapsed
     return audio, speech_chunks, original_duration_s
+
+
+def group_intervals_by_language(
+    intervals: Iterable[tuple[float, float]],
+    languages: Iterable[str],
+) -> list[tuple[str, list[tuple[float, float]]]]:
+    """Group consecutive speech intervals that detected the same language into
+    decode runs: each run is transcribed as one collapsed decode with its language
+    pinned, so a multilingual file never forces one language onto all speech."""
+    runs: list[tuple[str, list[tuple[float, float]]]] = []
+    for interval, language in zip(intervals, languages, strict=True):
+        if runs and runs[-1][0] == language:
+            runs[-1][1].append(interval)
+        else:
+            runs.append((language, [interval]))
+    return runs
+
+
+def turns_to_language_runs(
+    turns: list[tuple[float, float]],
+    languages: list[str],
+    pad_s: float = SPEECH_PAD_S,
+    merge_gap_s: float = MERGE_GAP_S,
+) -> list[tuple[str, list[tuple[float, float]]]]:
+    """Group consecutive same-language turns into decode runs and pad/merge each
+    run's turns into speech intervals.
+
+    Padding is clamped at run boundaries to the midpoint between the adjacent
+    turns: neighbouring runs of different languages can be closer than the pad
+    (or even overlap, in crosstalk), and without the clamp the same audio would
+    be decoded twice, once per language.
+    """
+    grouped = group_intervals_by_language(turns, languages)
+
+    runs: list[tuple[str, list[tuple[float, float]]]] = []
+    for i, (language, run_turns) in enumerate(grouped):
+        lower = 0.0
+        if i > 0:
+            previous_end = grouped[i - 1][1][-1][1]
+            lower = max(0.0, (previous_end + run_turns[0][0]) / 2)
+        upper = math.inf
+        if i + 1 < len(grouped):
+            next_start = grouped[i + 1][1][0][0]
+            upper = (run_turns[-1][1] + next_start) / 2
+        intervals = pad_and_merge_intervals(run_turns, pad_s, merge_gap_s, lower, upper)
+        if intervals:
+            runs.append((language, intervals))
+    return runs
 
 
 def restore_and_split_segments(
@@ -156,7 +239,7 @@ def _split_segment_by_intervals(seg: Segment, intervals: list[tuple[float, float
     current: list[Word] = []
     current_idx: int | None = None
 
-    for word in seg.words:
+    for word in seg.words or []:
         idx = _interval_index(intervals, (word.start + word.end) / 2)
         if idx is None:
             idx = current_idx

@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import threading
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping, cast
 
 import pyannote.audio as _pyannote_audio
 import torch
@@ -212,5 +212,7 @@ class DiarizationService:
 
         logger.info("Diarization completed")
 
-        for turn, speaker in output.speaker_diarization:
+        # pyannote types __call__ loosely; the speaker-diarization pipeline returns an
+        # object carrying `speaker_diarization`, which the static union can't express.
+        for turn, speaker in cast(Any, output).speaker_diarization:
             yield DiarizationSegment(turn, speaker, speaker)

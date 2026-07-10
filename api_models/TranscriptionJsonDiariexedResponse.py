@@ -16,6 +16,7 @@ class TranscriptionJsonDiariexedResponse(BaseModel):
                     end=segment.end,
                     text=segment.text,
                     speaker=segment.speaker,
+                    language=segment.language,
                 )
                 for segment in segments
             ]

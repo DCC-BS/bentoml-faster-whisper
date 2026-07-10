@@ -2,6 +2,9 @@ import dataclasses
 import sys
 from typing import Callable, Iterable
 
+import numpy as np
+from faster_whisper import WhisperModel
+from faster_whisper.audio import decode_audio
 from faster_whisper.vad import VadOptions
 
 from api_models.enums import ResponseFormat, Task
@@ -16,10 +19,18 @@ from api_models.TranscriptionRequest import TranscriptionRequest
 from config import WhisperModelConfig
 from core import Segment
 from diarization_service import DiarizationSegment, DiarizationService
+from helpers.language_id import (
+    detect_turn_language_probs,
+    fill_missing_rows_from_intervals,
+    resolve_language_inventory,
+    viterbi_smooth_languages,
+)
 from helpers.speech_regions import (
-    collapse_audio_to_speech,
+    WHISPER_SAMPLE_RATE,
+    collapse_decoded_to_speech,
     diarization_to_speech_intervals,
     restore_and_split_segments,
+    turns_to_language_runs,
 )
 from helpers.transcription_cleaner import clean_transcription_segments
 from helpers.whiper_diarization_merger import merge_whipser_diarization
@@ -131,18 +142,15 @@ class FasterWhisperHandler:
         # fallback when diarization is off or found no speech at all — no speech regions would
         # mean decoding the entire file.
         intervals = diarization_to_speech_intervals(dia_segments) if dia_segments else []
-        collapsed = collapse_audio_to_speech(str(request.file), intervals) if intervals else None
         word_timestamps = ("word" in request.timestamp_granularities) or bool(dia_segments)
 
-        if collapsed is not None:
-            audio, speech_chunks, original_duration_s = collapsed
-            vad_kwargs: dict = {"vad_filter": False}
-        else:
-            audio = str(request.file)
-            vad_kwargs = {
-                "vad_filter": request.vad_filter,
-                "vad_parameters": VadOptions(**request.vad_parameters.model_dump()),
-            }
+        decoded: np.ndarray | None = None
+        collapsed: tuple[np.ndarray, list[dict]] | None = None
+        original_duration_s = 0.0
+        if intervals:
+            decoded = decode_audio(str(request.file), sampling_rate=WHISPER_SAMPLE_RATE)
+            original_duration_s = decoded.shape[0] / WHISPER_SAMPLE_RATE
+            collapsed = collapse_decoded_to_speech(decoded, intervals)
 
         # transcribe() returns a lazy generator that only decodes while iterated, so the model ref-count
         # must be held for the lifetime of the returned generator, not just this method call. We enter the
@@ -150,33 +158,40 @@ class FasterWhisperHandler:
         model_ctx = self.model_manager.load_model(request.model)
         whisper = model_ctx.__enter__()
         try:
-            segments, transcription_info = whisper.transcribe(
-                audio,
-                initial_prompt=request.prompt,
-                language=request.language,
-                temperature=request.temperature,
-                word_timestamps=word_timestamps,
-                best_of=request.best_of,
-                hotwords=request.hotwords,
-                condition_on_previous_text=request.condition_on_previous_text,
-                beam_size=request.beam_size,
-                patience=request.patience,
-                repetition_penalty=request.repetition_penalty,
-                length_penalty=request.length_penalty,
-                no_repeat_ngram_size=request.no_repeat_ngram_size,
-                compression_ratio_threshold=request.compression_ratio_threshold,
-                log_prob_threshold=request.log_prob_threshold,
-                prompt_reset_on_temperature=request.prompt_reset_on_temperature,
-                **vad_kwargs,
-            )
-
-            if collapsed is not None:
+            decode_options = self._decode_options(request, word_timestamps)
+            if collapsed is not None and request.language is None:
+                # No language given: detect it per speaker turn so multilingual audio
+                # gets each region transcribed in its own language.
+                assert decoded is not None  # collapsed is derived from decoded
+                turns = sorted((max(t.start, 0.0), t.end) for t in dia_segments if t.end > t.start)
+                candidates = [str(c) for c in request.language_candidates] if request.language_candidates else None
+                segments, transcription_info = self._transcribe_language_runs(
+                    whisper,
+                    decoded,
+                    collapsed,
+                    turns,
+                    original_duration_s,
+                    decode_options,
+                    language_candidates=candidates,
+                )
+            elif collapsed is not None:
+                audio, speech_chunks = collapsed
+                segments, transcription_info = whisper.transcribe(
+                    audio, language=request.language, vad_filter=False, **decode_options
+                )
                 # transcribe() saw only the concatenated speech, so its timestamps and reported
                 # duration are on the collapsed timeline: map the timestamps back (clamping and
                 # splitting seam-straddling segments) and report the original file's duration.
                 segments = restore_and_split_segments(segments, speech_chunks, intervals, original_duration_s)
                 transcription_info = dataclasses.replace(transcription_info, duration=original_duration_s)
             else:
+                segments, transcription_info = whisper.transcribe(
+                    str(request.file),
+                    language=request.language,
+                    vad_filter=request.vad_filter,
+                    vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
+                    **decode_options,
+                )
                 segments = Segment.from_faster_whisper_segments(segments)
 
             if dia_segments:
@@ -197,3 +212,81 @@ class FasterWhisperHandler:
                 model_ctx.__exit__(None, None, None)
 
         return _held_segments(), transcription_info
+
+    @staticmethod
+    def _decode_options(request: TranscriptionRequest, word_timestamps: bool) -> dict:
+        """The transcribe() options shared by every decode of this request; language
+        and VAD arguments differ per pipeline path, so they are not included."""
+        return dict(
+            initial_prompt=request.prompt,
+            temperature=request.temperature,
+            word_timestamps=word_timestamps,
+            best_of=request.best_of,
+            hotwords=request.hotwords,
+            condition_on_previous_text=request.condition_on_previous_text,
+            beam_size=request.beam_size,
+            patience=request.patience,
+            repetition_penalty=request.repetition_penalty,
+            length_penalty=request.length_penalty,
+            no_repeat_ngram_size=request.no_repeat_ngram_size,
+            compression_ratio_threshold=request.compression_ratio_threshold,
+            log_prob_threshold=request.log_prob_threshold,
+            prompt_reset_on_temperature=request.prompt_reset_on_temperature,
+        )
+
+    def _transcribe_language_runs(
+        self,
+        whisper: WhisperModel,
+        decoded: np.ndarray,
+        collapsed: tuple[np.ndarray, list[dict]],
+        turns: list[tuple[float, float]],
+        original_duration_s: float,
+        decode_options: dict,
+        language_candidates: list[str] | None = None,
+    ):
+        """Detect the language of each speaker turn (batched, smoothed over the
+        whole file) and decode consecutive same-language turns as one collapsed
+        run, so a speaker switching languages mid-file gets every region
+        transcribed in its own language. Timestamps of every run are restored
+        onto the original timeline, and each emitted segment is tagged with its
+        run's language."""
+        durations = [end - start for start, end in turns]
+        prob_rows = detect_turn_language_probs(whisper, decoded, turns)
+        prob_rows = fill_missing_rows_from_intervals(whisper, decoded, turns, prob_rows)
+
+        if any(row is not None for row in prob_rows):
+            inventory = resolve_language_inventory(prob_rows, durations, language_candidates)
+            resolved = viterbi_smooth_languages(prob_rows, durations, inventory)
+        else:
+            # No turn long enough to detect on: detect once on all collapsed
+            # speech, like the single-language path would.
+            language, _, _ = whisper.detect_language(audio=collapsed[0])
+            resolved = [language] * len(turns)
+
+        runs = []
+        for language, run_intervals in turns_to_language_runs(turns, resolved):
+            run_collapsed = collapse_decoded_to_speech(decoded, run_intervals)
+            if run_collapsed is None:
+                continue
+            run_audio, run_chunks = run_collapsed
+            fw_segments, info = whisper.transcribe(run_audio, language=language, vad_filter=False, **decode_options)
+            restored = restore_and_split_segments(fw_segments, run_chunks, run_intervals, original_duration_s)
+            runs.append((language, run_intervals, info, restored))
+
+        # The response carries a single top-level language: the one covering the most
+        # speech time. Per-segment languages preserve the rest.
+        majority_language, _, majority_info, _ = max(runs, key=lambda run: sum(end - start for start, end in run[1]))
+        transcription_info = dataclasses.replace(
+            majority_info, language=majority_language, duration=original_duration_s
+        )
+
+        def tagged_segments() -> Iterable[Segment]:
+            next_id = 0
+            for language, _, _, restored in runs:
+                for segment in restored:
+                    segment.id = next_id
+                    next_id += 1
+                    segment.language = language
+                    yield segment
+
+        return tagged_segments(), transcription_info

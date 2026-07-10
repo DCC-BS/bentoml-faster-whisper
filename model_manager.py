@@ -94,7 +94,8 @@ class WhisperModelManager:
     def __init__(self, whisper_config: WhisperModelConfig) -> None:
         self.whisper_config: WhisperModelConfig = whisper_config
         self.loaded_models: OrderedDict[str, SelfDisposingModel[WhisperModel]] = OrderedDict()
-        self._lock = threading.Lock()
+        # Reentrant: unload_model() holds this while unload() calls back into _handle_model_unload().
+        self._lock = threading.RLock()
 
     def _load_fn(self, model_id: str) -> WhisperModel:
         return WhisperModel(

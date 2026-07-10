@@ -5,6 +5,8 @@ import bentoml
 import pytest
 import requests
 
+pytestmark = pytest.mark.integration
+
 
 class TestIntegration:
     def test_invalid_parameter(self):
