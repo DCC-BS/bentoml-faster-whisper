@@ -60,6 +60,11 @@ run: ## Run the BentoML service
 	@echo "🚀 Running the BentoML service"
 	@uv run --env-file .env bentoml serve service:FasterWhisper -p 50001
 
+.PHONY: diagnose-ui
+diagnose-ui: ## Launch the Gradio UI comparing raw pyannote turns to the full pipeline output
+	@echo "🚀 Launching the diagnosis UI"
+	@uv run --env-file .env python tools/diagnose_ui.py
+
 .PHONY: help
 help:
 	@uv run python -c "import re; \

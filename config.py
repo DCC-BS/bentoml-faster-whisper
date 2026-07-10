@@ -93,9 +93,12 @@ class LanguageIdConfig(BaseModel):
     silently replaced by the default.
     """
 
-    min_turn_s: float = Field(default=2.0, gt=0.0)
+    min_turn_s: float = Field(default=1.0, gt=0.0)
     """Turns shorter than this get no own detection pass (Whisper's language ID is
-    unreliable on very short clips); they are resolved from context instead."""
+    unreliable on very short clips); they are resolved from context instead. 1.0 keeps
+    fast exchanges of ~1s utterances detectable (their merged interval often stays
+    under 2s); the inventory restriction and Viterbi smoothing contain the noise of
+    detecting on such short clips."""
 
     batch_size: int = Field(default=8, ge=1)
     """Encoder batch for language-detection windows; bounds peak GPU memory

@@ -168,6 +168,33 @@ def test_fast_exchange_splits_into_alternating_speakers():
     assert [(s.speaker, s.text) for s in result] == [("A", " oui"), ("B", " non"), ("A", " si")]
 
 
+def test_border_word_straddling_turn_boundary_does_not_split():
+    """A word whose timestamps straddle a turn border (majority of it in neither
+    turn) keeps its max-overlap label but must not cut the segment — word
+    timestamps jitter ~100-300ms around pyannote borders, and cutting there
+    produced spurious one-word segments with the wrong speaker ("Hallo" /
+    "zusammen" at 110.8s in teams_konferenz)."""
+    whisper_segments = [
+        DummyWhisperSegment(
+            start=110.3,
+            end=111.2,
+            words=[
+                DummyWord(start=110.33, end=110.77, word=" Hallo"),  # inside A's turn
+                DummyWord(start=110.77, end=111.19, word=" zusammen"),  # straddles the A|B border
+            ],
+        )
+    ]
+    diarization_segments = [
+        DiarizationSegment(segment=Segment(110.3, 110.9), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(110.9, 111.4), speaker="B", label="B"),
+    ]
+
+    result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
+
+    assert len(result) == 1, f"border jitter must not split: {[(s.speaker, s.text) for s in result]}"
+    assert result[0].speaker == "A"  # majority by word duration
+
+
 def test_words_without_speaker_do_not_split_segment():
     """Unassigned words (in silence between turns of the same speaker) stay with
     the running group instead of cutting the segment."""

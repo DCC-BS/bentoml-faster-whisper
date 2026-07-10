@@ -107,6 +107,9 @@ def transcription(handler) -> tuple[dict, _LidMetrics]:
             {
                 "file": AUDIO,
                 "diarization": True,
+                # The recording has 5 speakers; pinning the count spares pyannote
+                # the estimation and stabilizes speaker attribution.
+                "diarization_speaker_count": 5,
                 "response_format": ResponseFormat.VERBOSE_JSON,
                 "timestamp_granularities": ["word"],
             }

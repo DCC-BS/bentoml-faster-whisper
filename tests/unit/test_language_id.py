@@ -183,7 +183,9 @@ def _samples(seconds: float) -> np.ndarray:
 
 def test_detect_skips_short_turns_entirely():
     fake = _FakeWhisper(results=[[("<|de|>", 1.0)]])
-    rows = detect_turn_language_probs(cast(WhisperModel, fake), _samples(20.0), [(0.0, 1.5), (2.0, 8.0)])
+    rows = detect_turn_language_probs(
+        cast(WhisperModel, fake), _samples(20.0), [(0.0, 1.5), (2.0, 8.0)], min_turn_s=2.0
+    )
     assert rows[0] is None
     assert rows[1] is not None and rows[1]["de"] == pytest.approx(1.0)
     assert fake.encode_batch_sizes == [1]  # the short turn cost no encoder pass
@@ -214,7 +216,7 @@ def test_detect_batches_windows_across_turns():
 def test_detect_drops_sub_minimum_tail_window():
     # 31s turn: 30s window + 1s tail; the tail is below the minimum and skipped
     fake = _FakeWhisper(results=[[("<|de|>", 1.0)]])
-    rows = detect_turn_language_probs(cast(WhisperModel, fake), _samples(31.0), [(0.0, 31.0)])
+    rows = detect_turn_language_probs(cast(WhisperModel, fake), _samples(31.0), [(0.0, 31.0)], min_turn_s=2.0)
     assert rows[0] is not None
     assert rows[0]["de"] == pytest.approx(1.0)
     assert fake.encode_batch_sizes == [1]
@@ -232,7 +234,9 @@ def test_fill_missing_rows_detects_merged_short_turn_cluster():
 
 def test_fill_missing_rows_leaves_isolated_short_turn_none():
     fake = _FakeWhisper(results=[])
-    rows = fill_missing_rows_from_intervals(cast(WhisperModel, fake), _samples(10.0), [(5.0, 5.8)], [None])
+    rows = fill_missing_rows_from_intervals(
+        cast(WhisperModel, fake), _samples(10.0), [(5.0, 5.8)], [None], min_turn_s=2.0
+    )
     assert rows == [None]
     assert fake.encode_batch_sizes == []
 
@@ -288,7 +292,7 @@ def test_language_id_config_env_overrides(monkeypatch):
     config = LanguageIdConfig.from_env()
     assert config.switch_penalty == 3.5
     assert config.batch_size == 16
-    assert config.min_turn_s == 2.0  # untouched fields keep their defaults
+    assert config.min_turn_s == 1.0  # untouched fields keep their defaults
 
 
 def test_language_id_config_invalid_env_value_raises(monkeypatch):

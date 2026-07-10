@@ -82,10 +82,13 @@ speech at all. Any input format FFmpeg can decode is accepted.
 
 After decoding, each word is assigned a `speaker` by matching it against the diarization
 turn with the largest time overlap (nearest turn as a fallback for words that land entirely
-inside a turn's padding), and segments are split wherever their words alternate speakers —
-so every returned segment carries exactly one speaker, even in fast exchanges whose turns
-were decoded as a single window. Speaker labels appear in the `json_diarized` and
-`verbose_json` response formats.
+inside a turn's padding), and segments are split at credible speaker changes — so a fast
+exchange decoded as one window keeps its alternation, and every returned segment carries
+exactly one speaker. Credible means: the words on both sides sit solidly inside their turns
+(word timestamps jitter around turn borders) and no resulting piece is shorter than 0.5s
+(pyannote emits sub-second turn fragments during crosstalk); anything less keeps the old
+behavior of one segment labeled by word-duration majority. Speaker labels appear in the
+`json_diarized` and `verbose_json` response formats.
 
 ### Multi-language audio
 
@@ -94,11 +97,11 @@ detected language over the whole file. Instead it runs a turn-level language ide
 pipeline (`helpers/language_id.py`), built for meetings where speakers switch languages —
 even the same speaker within seconds:
 
-1. **Per-turn detection, batched.** Every pyannote speaker turn ≥ 2s gets a full Whisper
+1. **Per-turn detection, batched.** Every pyannote speaker turn ≥ 1s gets a full Whisper
    language probability distribution. The mel windows of all turns are encoded in GPU
    batches (instead of one sequential encoder pass per region), and turns longer than 30s
    average the distributions of all their windows rather than trusting the first one.
-2. **Short-turn fallback.** Turns too short to detect on reliably (< 2s — Whisper's language
+2. **Short-turn fallback.** Turns too short to detect on reliably (< 1s — Whisper's language
    ID is untrustworthy there) get the distribution of their surrounding merged speech
    interval, so fast two-speaker exchanges still detect; isolated short blips are resolved
    from context in step 4.
@@ -140,7 +143,7 @@ silently replaced.
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
-| `LID_MIN_TURN_S` | `2.0` | Minimum turn length (s) to detect language on directly. |
+| `LID_MIN_TURN_S` | `1.0` | Minimum turn length (s) to detect language on directly. |
 | `LID_BATCH_SIZE` | `8` | Encoder batch size for detection windows (bounds peak GPU memory). |
 | `LID_INVENTORY_MASS_SHARE` | `0.15` | Share of total speech mass admitting a language into the inventory. |
 | `LID_MIN_LANGUAGE_MASS_S` | `15.0` | Absolute mass (s) that also admits a language, regardless of share. |
@@ -153,6 +156,25 @@ To debug through the FasterWhisper service, you can run the service with the fol
 ```bash
 uv run python launch.py
 ```
+
+### Diagnosis UI
+
+`tools/diagnose_ui.py` is a [Gradio](https://www.gradio.app/) app for comparing pyannote's
+raw speaker turns against the full pipeline's output on a single file — useful when
+diarization or the multi-language path misbehaves and you need to see whether the fault is
+in pyannote's turns or in how the pipeline merges/decodes them. Upload a file, optionally
+pin the language or the number of speakers (`diarization_speaker_count`, 1–6; leave empty to
+let pyannote estimate it — see the "Multi-language audio" and "Speaker diarization" sections
+above), and it shows the raw turns, the final segments (with per-segment language and
+speaker), and the pipeline's detected top-level language side by side. Diarization runs only
+once per click — the raw turns shown are exactly what fed the transcription, not a second,
+independently-run pass.
+
+```bash
+make diagnose-ui
+```
+
+`gradio` is a dev-only dependency; the tool is not part of the served image.
 
 ## Deploy
 
