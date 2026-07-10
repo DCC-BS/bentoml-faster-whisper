@@ -125,7 +125,12 @@ with gr.Blocks(title="FasterWhisper diagnosis") as demo:
         turns_table = gr.Dataframe(headers=_TURNS_HEADERS, label="Raw pyannote turns")
         segments_table = gr.Dataframe(headers=_SEGMENTS_HEADERS, label="Pipeline segments")
 
-    run_button.click(
+    # gradio attaches .click() dynamically from Button.EVENTS at class-creation time;
+    # ty's resolution of it is flaky across whole-project runs (sometimes sees it,
+    # sometimes not — confirmed both a false "unresolved-attribute" and, with a
+    # matching ty:ignore, a false "unused-ignore-comment" on otherwise-identical
+    # runs). cast(Any, ...) sidesteps the flake entirely instead of chasing it.
+    cast(Any, run_button).click(
         diagnose,
         inputs=[audio, language, num_speakers, model],
         outputs=[turns_table, segments_table, top_language],
