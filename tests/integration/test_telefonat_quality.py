@@ -21,12 +21,19 @@ from tests.fuzzy_match import (
     text_similarity,
 )
 
-pytestmark = pytest.mark.integration
-
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 INTERNAL_ASSETS = ASSETS / "internal"
 AUDIO = INTERNAL_ASSETS / "Telefonat.m4a"
-REFERENCE = load_reference(INTERNAL_ASSETS / "telefonat_transcript.json")
+REFERENCE_PATH = INTERNAL_ASSETS / "telefonat_transcript.json"
+# Both assets are gitignored (internal recording); load lazily so a checkout
+# without them still collects this module instead of crashing the whole pytest
+# session — pytest.mark.skipif only skips execution, not the module-level import.
+REFERENCE = load_reference(REFERENCE_PATH) if REFERENCE_PATH.exists() else None
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(REFERENCE is None, reason=f"internal asset {REFERENCE_PATH} not present"),
+]
 
 MIN_TEXT_SIMILARITY = 0.75
 MIN_SPEAKER_AGREEMENT = 0.80
@@ -43,6 +50,7 @@ def diarized_segments() -> list[dict]:
 
 
 def test_transcript_fuzzy_matches_reference(diarized_segments):
+    assert REFERENCE is not None  # guaranteed by the module skipif above
     text = " ".join(segment["text"] for segment in diarized_segments)
 
     similarity = text_similarity(REFERENCE["text"], text)
@@ -51,6 +59,7 @@ def test_transcript_fuzzy_matches_reference(diarized_segments):
 
 
 def test_diarization_fuzzy_matches_reference(diarized_segments):
+    assert REFERENCE is not None  # guaranteed by the module skipif above
     assert len({segment["speaker"] for segment in diarized_segments}) == 2, "the call has exactly two speakers"
 
     match = match_speakers(

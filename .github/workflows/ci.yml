@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  backend-ci:
+    uses: DCC-BS/ci-workflows/.github/workflows/python-backend-ci.yml@v9
+    with:
+      python_versions: '["3.13"]'
+      quality_python_version: "3.13"
+      uv_version: "0.11.21"
+      check_command: "make check"
+      # make test needs an --env-file to exist (it doesn't read secrets for the fast
+      # suite, just fails without the file); make test-model/integration need a GPU
+      # and downloaded model weights, so they stay out of CI.
+      test_command: "touch .env && make test"

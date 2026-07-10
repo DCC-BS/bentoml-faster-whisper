@@ -25,9 +25,16 @@ from tests.fuzzy_match import (
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 INTERNAL_ASSETS = ASSETS / "internal"
 AUDIO = INTERNAL_ASSETS / "Telefonat.m4a"
-REFERENCE = load_reference(INTERNAL_ASSETS / "telefonat_transcript.json")
+REFERENCE_PATH = INTERNAL_ASSETS / "telefonat_transcript.json"
+# Both assets are gitignored (internal recording); load lazily so a checkout
+# without them still collects this module instead of crashing the whole pytest
+# session — pytest.mark.skipif only skips execution, not the module-level import.
+REFERENCE = load_reference(REFERENCE_PATH) if REFERENCE_PATH.exists() else None
 
-pytestmark = pytest.mark.model
+pytestmark = [
+    pytest.mark.model,
+    pytest.mark.skipif(REFERENCE is None, reason=f"internal asset {REFERENCE_PATH} not present"),
+]
 
 # Thresholds sit well below the currently measured values (see the integration
 # twin for the real-pyannote numbers) so decode jitter doesn't flake the build,
@@ -39,16 +46,19 @@ MIN_WORD_COVERAGE = 0.85
 
 @pytest.fixture(scope="module")
 def diarized_segments(handler):
+    reference = REFERENCE
+    assert reference is not None  # guaranteed by the module skipif above
     request = TranscriptionRequest.model_validate(
         {"file": AUDIO, "diarization": True, "response_format": ResponseFormat.JSON_DIARZED}
     )
     # handler is session-scoped and shared, so the stub must not outlive this transcription.
     with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr(handler.diarization, "diarize", lambda *args, **kwargs: iter(reference_turns(REFERENCE)))
+        monkeypatch.setattr(handler.diarization, "diarize", lambda *args, **kwargs: iter(reference_turns(reference)))
         return json.loads(handler.transcribe_audio(request))["segments"]
 
 
 def test_transcript_fuzzy_matches_reference(diarized_segments):
+    assert REFERENCE is not None  # guaranteed by the module skipif above
     text = " ".join(segment["text"] for segment in diarized_segments)
 
     similarity = text_similarity(REFERENCE["text"], text)
@@ -57,6 +67,7 @@ def test_transcript_fuzzy_matches_reference(diarized_segments):
 
 
 def test_speakers_fuzzy_match_reference(diarized_segments):
+    assert REFERENCE is not None  # guaranteed by the module skipif above
     match = match_speakers(
         reference_words(REFERENCE),
         [(segment["start"], segment["end"], segment["speaker"]) for segment in diarized_segments],
