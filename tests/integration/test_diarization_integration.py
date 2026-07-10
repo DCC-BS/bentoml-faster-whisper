@@ -1,4 +1,8 @@
+import pytest
+
 from diarization_service import DiarizationService
+
+pytestmark = pytest.mark.integration
 
 
 def test_diarize():
