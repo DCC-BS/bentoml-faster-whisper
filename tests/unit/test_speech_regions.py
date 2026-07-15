@@ -11,6 +11,7 @@ from helpers.speech_regions import (
     group_intervals_by_language,
     restore_and_split_segments,
     speech_intervals_to_chunks,
+    turns_to_language_runs,
 )
 
 
@@ -221,3 +222,37 @@ def test_group_intervals_by_language_single_language_is_one_run():
     intervals = [(0.0, 5.0), (6.0, 10.0)]
 
     assert group_intervals_by_language(intervals, ["de", "de"]) == [("de", [(0.0, 5.0), (6.0, 10.0)])]
+
+
+def test_long_single_language_run_is_capped_into_bounded_runs():
+    # One continuous stretch of same-language speech that would collapse into a single
+    # very long decode block must be split into several runs no longer than max_run_s,
+    # so Whisper never decodes an over-long block in one go.
+    turns = [(float(i), float(i) + 1.0) for i in range(0, 300, 10)]  # 30 turns spanning 0..291
+    languages = ["de"] * len(turns)
+
+    runs = turns_to_language_runs(turns, languages, max_run_s=100.0)
+
+    assert len(runs) >= 3
+    assert all(language == "de" for language, _ in runs)
+    for _, intervals in runs:
+        span = intervals[-1][1] - intervals[0][0]
+        assert span <= 100.0 + 2 * sr.SPEECH_PAD_S
+
+
+def test_single_short_run_is_not_split():
+    turns = [(0.0, 5.0), (6.0, 10.0)]
+
+    runs = turns_to_language_runs(turns, ["de", "de"], max_run_s=100.0)
+
+    assert len(runs) == 1
+    assert runs[0][0] == "de"
+
+
+def test_turn_longer_than_cap_becomes_its_own_run():
+    # A single turn exceeding the cap must not be cut mid-turn; it stays whole.
+    turns = [(0.0, 200.0), (201.0, 205.0)]
+
+    runs = turns_to_language_runs(turns, ["de", "de"], max_run_s=100.0)
+
+    assert len(runs) == 2

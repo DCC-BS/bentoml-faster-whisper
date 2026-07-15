@@ -150,6 +150,17 @@ silently replaced.
 | `LID_SWITCH_PENALTY` | `2.0` | Viterbi cost of a language switch between adjacent turns. |
 | `LID_EVIDENCE_CAP_S` | `10.0` | Cap (s) on a single turn's own detection weight in the smoothing. |
 
+A separate tunable bounds how much collapsed speech is decoded per `whisper.transcribe()`
+call. With diarization on, continuous speech (radio, panel discussions) collapses into
+intervals many minutes long; decoding such a block in one call makes Whisper's long-form
+decode drift and silently drop whole 30 s windows. The pipeline therefore splits the speech
+turns into runs no longer than the cap — always at a turn boundary (the widest pause), so no
+word is cut — and decodes each run separately.
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `WHISPER_MAX_DECODE_RUN_S` | `60.0` | Max wall-clock span (s) of speech decoded in one call. ~2 Whisper windows: enough context for quality, short enough that drift (observed to reappear around ~90 s) does not accumulate. Lower it if long files still drop segments; raise it for slightly more decode context. |
+
 ### Local Development
 
 To debug through the FasterWhisper service, you can run the service with the following script:

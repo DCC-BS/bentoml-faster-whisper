@@ -1,9 +1,11 @@
 import math
+import os
 from typing import Iterable, Protocol
 
 import numpy as np
 from faster_whisper.audio import decode_audio
 from faster_whisper.transcribe import restore_speech_timestamps
+from loguru import logger
 
 from core import Segment, Word
 
@@ -15,6 +17,32 @@ WHISPER_SAMPLE_RATE = 16000
 # context across short pauses and avoids many tiny seek windows).
 SPEECH_PAD_S = 0.3
 MERGE_GAP_S = 1.0
+
+
+def _positive_float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Invalid value for {}: {!r}; using default {}", name, raw, default)
+        return default
+    if value <= 0:
+        logger.warning("{} must be > 0, got {}; using default {}", name, value, default)
+        return default
+    return value
+
+
+# Upper bound on the wall-clock span of speech decoded in a single whisper.transcribe()
+# call. Continuous speech (radio, panel discussions) collapses into intervals many minutes
+# long; handing such a block to one decode triggers Whisper's long-form seek drift, where
+# whole 30 s windows are skipped and never emitted. Splitting the turns into runs no longer
+# than this — always at a turn boundary, so no word is cut — keeps each decode short enough
+# to stay on track. 60 s is ~two 30 s Whisper windows: enough decode context for quality, but
+# short enough that drift does not accumulate (measured: drift reappears around ~90 s). Override
+# with WHISPER_MAX_DECODE_RUN_S.
+MAX_RUN_S = _positive_float_env("WHISPER_MAX_DECODE_RUN_S", 60.0)
 
 # A restored word is snapped into its speech chunk, so its midpoint sits within that
 # chunk's original-timeline interval; this only absorbs 2-decimal rounding and the
@@ -143,21 +171,59 @@ def group_intervals_by_language(
     return runs
 
 
+def _split_turns_by_span(
+    turns: list[tuple[float, float]],
+    max_run_s: float,
+) -> Iterable[list[tuple[float, float]]]:
+    """Split a run of turns into sub-runs whose wall-clock span (last end minus
+    first start) stays within ``max_run_s``, breaking only at turn boundaries. A
+    single turn longer than the cap becomes its own sub-run rather than being cut.
+
+    Each cut falls on the *widest* silence gap between consecutive turns, then
+    recurses on the two halves. Cutting at the longest pause keeps boundaries on
+    natural sentence breaks: a greedy first-fit split can land a boundary in the
+    middle of a sentence, where Whisper's decode of the following run drifts and
+    drops the opening words. Splitting at the widest pause is stable regardless of
+    the exact cap value.
+    """
+    span = turns[-1][1] - turns[0][0]
+    if len(turns) == 1 or span <= max_run_s:
+        yield turns
+        return
+
+    # Widest gap wins; ties break toward the centre so near-uniform gaps split
+    # roughly in half (balanced recursion) instead of peeling one turn at a time.
+    mid = len(turns) / 2
+    split_at = max(range(1, len(turns)), key=lambda i: (turns[i][0] - turns[i - 1][1], -abs(i - mid)))
+    yield from _split_turns_by_span(turns[:split_at], max_run_s)
+    yield from _split_turns_by_span(turns[split_at:], max_run_s)
+
+
 def turns_to_language_runs(
     turns: list[tuple[float, float]],
     languages: list[str],
     pad_s: float = SPEECH_PAD_S,
     merge_gap_s: float = MERGE_GAP_S,
+    max_run_s: float = MAX_RUN_S,
 ) -> list[tuple[str, list[tuple[float, float]]]]:
     """Group consecutive same-language turns into decode runs and pad/merge each
     run's turns into speech intervals.
 
+    Runs are additionally capped at ``max_run_s`` of wall-clock span so a long
+    stretch of continuous speech is decoded as several bounded clips instead of
+    one very long block (which makes Whisper's long-form decode drift and skip
+    windows). Splits fall on turn boundaries, so no word is cut.
+
     Padding is clamped at run boundaries to the midpoint between the adjacent
-    turns: neighbouring runs of different languages can be closer than the pad
-    (or even overlap, in crosstalk), and without the clamp the same audio would
-    be decoded twice, once per language.
+    turns: neighbouring runs (of different languages, or the same language split
+    by the length cap) can be closer than the pad — or even overlap, in crosstalk
+    — and without the clamp the same audio would be decoded twice.
     """
-    grouped = group_intervals_by_language(turns, languages)
+    grouped = [
+        (language, sub_run)
+        for language, run_turns in group_intervals_by_language(turns, languages)
+        for sub_run in _split_turns_by_span(run_turns, max_run_s)
+    ]
 
     runs: list[tuple[str, list[tuple[float, float]]]] = []
     for i, (language, run_turns) in enumerate(grouped):
