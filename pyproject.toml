@@ -1,6 +1,6 @@
 [project]
 name = "bentoml-faster-whisper"
-version = "1.6.4"
+version = "1.6.5"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "bentoml==1.4.39",
