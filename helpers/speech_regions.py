@@ -1,3 +1,4 @@
+import itertools
 import math
 import os
 from typing import Iterable, Protocol
@@ -171,11 +172,18 @@ def group_intervals_by_language(
     return runs
 
 
+def _max_end(turns: list[tuple[float, float]]) -> float:
+    """Furthest point any turn reaches. Not ``turns[-1][1]``: turns are sorted by
+    start, so a turn nested inside a longer one sorts *after* it and ends earlier.
+    """
+    return max(end for _, end in turns)
+
+
 def _split_turns_by_span(
     turns: list[tuple[float, float]],
     max_run_s: float,
 ) -> Iterable[list[tuple[float, float]]]:
-    """Split a run of turns into sub-runs whose wall-clock span (last end minus
+    """Split a run of turns into sub-runs whose wall-clock span (furthest end minus
     first start) stays within ``max_run_s``, breaking only at turn boundaries. A
     single turn longer than the cap becomes its own sub-run rather than being cut.
 
@@ -186,15 +194,18 @@ def _split_turns_by_span(
     drops the opening words. Splitting at the widest pause is stable regardless of
     the exact cap value.
     """
-    span = turns[-1][1] - turns[0][0]
+    span = _max_end(turns) - turns[0][0]
     if len(turns) == 1 or span <= max_run_s:
         yield turns
         return
 
     # Widest gap wins; ties break toward the centre so near-uniform gaps split
     # roughly in half (balanced recursion) instead of peeling one turn at a time.
+    # Each gap is measured against the furthest end so far rather than the previous
+    # turn's end, so overlapping turns yield a real (non-negative) gap.
     mid = len(turns) / 2
-    split_at = max(range(1, len(turns)), key=lambda i: (turns[i][0] - turns[i - 1][1], -abs(i - mid)))
+    reach = list(itertools.accumulate((end for _, end in turns), max))
+    split_at = max(range(1, len(turns)), key=lambda i: (turns[i][0] - reach[i - 1], -abs(i - mid)))
     yield from _split_turns_by_span(turns[:split_at], max_run_s)
     yield from _split_turns_by_span(turns[split_at:], max_run_s)
 
@@ -218,23 +229,34 @@ def turns_to_language_runs(
     turns: neighbouring runs (of different languages, or the same language split
     by the length cap) can be closer than the pad — or even overlap, in crosstalk
     — and without the clamp the same audio would be decoded twice.
+
+    Overlapping turns of the same language are unioned before anything else. pyannote
+    routinely emits a short turn nested inside a longer one, and since turns are sorted
+    by start the nested one lands *last* in its group; every "last turn ends here"
+    assumption below would then place the run boundary in the middle of the longer
+    turn and clamp the rest of its speech away, silently deleting it from the decode.
+    Unioning restores the sorted-non-overlapping invariant the split and the clamp
+    rely on. Speaker labels are untouched by this: runs carry timing only, and
+    merge_whipser_diarization attributes words from the original turns.
     """
     grouped = [
         (language, sub_run)
         for language, run_turns in group_intervals_by_language(turns, languages)
-        for sub_run in _split_turns_by_span(run_turns, max_run_s)
+        for sub_run in _split_turns_by_span(pad_and_merge_intervals(run_turns, 0.0, 0.0), max_run_s)
     ]
 
     runs: list[tuple[str, list[tuple[float, float]]]] = []
     for i, (language, run_turns) in enumerate(grouped):
+        # Turns of *different* languages can still overlap (crosstalk), so the
+        # neighbours' bounds are taken from their furthest reach, not their last turn.
         lower = 0.0
         if i > 0:
-            previous_end = grouped[i - 1][1][-1][1]
+            previous_end = _max_end(grouped[i - 1][1])
             lower = max(0.0, (previous_end + run_turns[0][0]) / 2)
         upper = math.inf
         if i + 1 < len(grouped):
-            next_start = grouped[i + 1][1][0][0]
-            upper = (run_turns[-1][1] + next_start) / 2
+            next_start = min(start for start, _ in grouped[i + 1][1])
+            upper = (_max_end(run_turns) + next_start) / 2
         intervals = pad_and_merge_intervals(run_turns, pad_s, merge_gap_s, lower, upper)
         if intervals:
             runs.append((language, intervals))

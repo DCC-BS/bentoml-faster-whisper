@@ -256,3 +256,51 @@ def test_turn_longer_than_cap_becomes_its_own_run():
     runs = turns_to_language_runs(turns, ["de", "de"], max_run_s=100.0)
 
     assert len(runs) == 2
+
+
+def _covers(runs, start: float, end: float) -> bool:
+    """Is [start, end] fully inside the union of every run's intervals?"""
+    intervals = sorted(interval for _, run_intervals in runs for interval in run_intervals)
+    covered = start
+    for interval_start, interval_end in intervals:
+        if interval_start > covered:
+            break
+        covered = max(covered, interval_end)
+    return covered >= end
+
+
+def test_turn_nested_in_a_longer_turn_does_not_truncate_it():
+    """pyannote sorts turns by start, so a short turn nested inside a long one comes
+    *after* it. The long turn's speech must still be decoded in full — the nested
+    turn's early end must not become the run's boundary.
+    """
+    turns = [(100.0, 140.0), (101.0, 101.5), (145.0, 150.0)]
+
+    runs = turns_to_language_runs(turns, ["de"] * len(turns), max_run_s=30.0)
+
+    assert _covers(runs, 100.0, 140.0), f"speech inside the long turn was clamped away: {runs}"
+
+
+def test_overlapping_turns_keep_full_speech_across_a_run_split():
+    """Same nesting, but the run cap forces a split. Whatever the split, every second
+    of speech has to land in some run: audio dropped here never reaches the decoder.
+    """
+    turns = [(0.0, 30.0), (31.0, 90.0), (32.0, 32.4), (95.0, 120.0)]
+
+    runs = turns_to_language_runs(turns, ["de"] * len(turns), max_run_s=60.0)
+
+    for start, end in turns:
+        assert _covers(runs, start, end), f"turn {start}-{end} not fully covered by any run: {runs}"
+
+
+def test_nested_turn_does_not_inflate_run_count():
+    """The nested turn is inside the long turn's speech, so it must not be emitted as
+    a separate micro-run — that would decode <1 s of audio in isolation.
+    """
+    turns = [(100.0, 140.0), (101.0, 101.5), (145.0, 150.0)]
+
+    runs = turns_to_language_runs(turns, ["de"] * len(turns), max_run_s=30.0)
+
+    assert not any(intervals[-1][1] - intervals[0][0] < 2.0 for _, intervals in runs), (
+        f"a sub-second nested turn became its own micro-run: {runs}"
+    )

@@ -286,7 +286,7 @@ wheels = [
 
 [[package]]
 name = "bentoml-faster-whisper"
-version = "1.6.4"
+version = "1.6.5"
 source = { virtual = "." }
 dependencies = [
     { name = "bentoml" },
