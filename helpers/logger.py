@@ -63,7 +63,7 @@ def _is_client_error(exc_type: type[BaseException], exc_value: BaseException | N
     if issubclass(exc_type, BentoMLException):
         source = exc_value if exc_value is not None else exc_type
         try:
-            return source.error_code.value < 500
+            return getattr(source, "error_code").value < 500
         except Exception:
             return False
     return False
