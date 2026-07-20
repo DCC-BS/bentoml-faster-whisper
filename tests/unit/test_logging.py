@@ -61,3 +61,73 @@ class TestLoggingConfiguration(unittest.TestCase):
 
             # Ensure quiet libraries stay at least WARNING even if global is DEBUG
             self.assertEqual(logging.getLogger("httpx").level, logging.WARNING)
+
+    def test_client_error_filter(self):
+        from pydantic import BaseModel, ValidationError
+        from starlette.exceptions import HTTPException
+        import sys
+
+        # Initialize logging to set up the handler and filter
+        configure_logging()
+        handler = logging.getLogger().handlers[0]
+
+        # Find the ClientErrorFilter
+        from helpers.logger import ClientErrorFilter
+
+        client_filter = None
+        for f in handler.filters:
+            if isinstance(f, ClientErrorFilter):
+                client_filter = f
+                break
+
+        self.assertIsNotNone(client_filter)
+        assert client_filter is not None
+
+        # 1. Test standard exception: should NOT be demoted
+        try:
+            raise RuntimeError("something went wrong")
+        except RuntimeError:
+            exc_info = sys.exc_info()
+
+        record = logging.LogRecord("name", logging.ERROR, "pathname", 12, "msg", (), exc_info)
+        self.assertTrue(client_filter.filter(record))
+        self.assertEqual(record.levelno, logging.ERROR)
+        self.assertIsNotNone(record.exc_info)
+
+        # 2. Test ValidationError: should be demoted and traceback removed
+        class DummyModel(BaseModel):
+            value: int
+
+        try:
+            DummyModel(value="not-an-int")
+        except ValidationError:
+            exc_info = sys.exc_info()
+
+        record = logging.LogRecord("name", logging.ERROR, "pathname", 12, "msg", (), exc_info)
+        self.assertTrue(client_filter.filter(record))
+        self.assertEqual(record.levelno, logging.WARNING)
+        self.assertIsNone(record.exc_info)
+        self.assertIn("Validation Error", record.msg)
+
+        # 3. Test Starlette HTTPException (status 400): should be demoted
+        try:
+            raise HTTPException(status_code=400, detail="bad input")
+        except HTTPException:
+            exc_info = sys.exc_info()
+
+        record = logging.LogRecord("name", logging.ERROR, "pathname", 12, "msg", (), exc_info)
+        self.assertTrue(client_filter.filter(record))
+        self.assertEqual(record.levelno, logging.WARNING)
+        self.assertIsNone(record.exc_info)
+        self.assertIn("HTTP Error (400)", record.msg)
+
+        # 4. Test Starlette HTTPException (status 500): should NOT be demoted
+        try:
+            raise HTTPException(status_code=500, detail="server fault")
+        except HTTPException:
+            exc_info = sys.exc_info()
+
+        record = logging.LogRecord("name", logging.ERROR, "pathname", 12, "msg", (), exc_info)
+        self.assertTrue(client_filter.filter(record))
+        self.assertEqual(record.levelno, logging.ERROR)
+        self.assertIsNotNone(record.exc_info)

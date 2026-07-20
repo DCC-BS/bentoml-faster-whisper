@@ -150,7 +150,7 @@ class FasterWhisperHandler:
             )
             segments = Segment.from_faster_whisper_segments(segments)
             response = segments_to_response(segments, transcription_info, response_format)
-        except BaseException as e:
+        except Exception as e:
             metrics.transcription_failures().labels("decode", type(e).__name__).inc()
             raise
 
@@ -183,7 +183,7 @@ class FasterWhisperHandler:
                         progress_callback=diarization_progress_callback,
                     )
                 )
-            except BaseException as e:
+            except Exception as e:
                 metrics.transcription_failures().labels("diarization", type(e).__name__).inc()
                 raise
             metrics.diarization_duration().observe(time.perf_counter() - dia_start)
@@ -260,7 +260,7 @@ class FasterWhisperHandler:
             # match the request: drop the words the merge just consumed unless they were asked for.
             if "word" not in request.timestamp_granularities:
                 segments = _strip_words(segments)
-        except BaseException as e:
+        except Exception as e:
             metrics.transcription_failures().labels("decode", type(e).__name__).inc()
             raise
 
@@ -270,7 +270,7 @@ class FasterWhisperHandler:
         def _held_segments():
             try:
                 yield from segments
-            except BaseException as e:
+            except Exception as e:
                 metrics.transcription_failures().labels("decode", type(e).__name__).inc()
                 raise
             finally:

@@ -37,24 +37,32 @@ _PIPELINE_LOGGERS = ("bentoml", "uvicorn", "uvicorn.error", "uvicorn.asgi", "cir
 _HTTP_APP_LOGGER = "bentoml._internal.server.http_app"
 
 
-def _exception_type(exc_info: object) -> type[BaseException] | None:
+def _exception_info(exc_info: object) -> tuple[type[BaseException] | None, BaseException | None]:
     if exc_info is True:
         exc_info = sys.exc_info()
     if isinstance(exc_info, BaseException):
-        return type(exc_info)
-    if isinstance(exc_info, tuple) and exc_info:
+        return type(exc_info), exc_info
+    if isinstance(exc_info, tuple) and len(exc_info) >= 2:
         exc_type = exc_info[0]
+        exc_value = exc_info[1]
         if isinstance(exc_type, type) and issubclass(exc_type, BaseException):
-            return exc_type
-    return None
+            val = exc_value if isinstance(exc_value, BaseException) else None
+            return exc_type, val
+    return None, None
 
 
-def _is_client_error(exc_type: type[BaseException]) -> bool:
+def _is_client_error(exc_type: type[BaseException], exc_value: BaseException | None = None) -> bool:
     """True for exceptions BentoML turns into a 4xx (bad input), not a 5xx server fault."""
     from bentoml.exceptions import BentoMLException
     from pydantic import ValidationError
+    from starlette.exceptions import HTTPException
 
     if issubclass(exc_type, ValidationError):
+        return True
+    if issubclass(exc_type, HTTPException):
+        if exc_value is not None:
+            status_code = getattr(exc_value, "status_code", 400)
+            return status_code < 500
         return True
     if issubclass(exc_type, BentoMLException):
         try:
@@ -70,10 +78,62 @@ def _drop_client_error_traceback(logger: WrappedLogger, method_name: str, event_
     Runs before ``format_exc_info`` in the pipeline; a bad request stays a single concise
     line while real server errors keep their full traceback.
     """
-    exc_type = _exception_type(event_dict.get("exc_info"))
-    if exc_type is not None and _is_client_error(exc_type):
-        event_dict.pop("exc_info", None)
+    exc_info = event_dict.get("exc_info")
+    if exc_info:
+        exc_type, exc_value = _exception_info(exc_info)
+        if exc_type is not None and _is_client_error(exc_type, exc_value):
+            event_dict.pop("exc_info", None)
     return event_dict
+
+
+class ClientErrorFilter(logging.Filter):
+    """Demote client 4xx/validation errors from ERROR to WARNING.
+
+    Simplifies the message to show the status/fields instead of dumping a stack trace.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info:
+            exc_type, exc_value = _exception_info(record.exc_info)
+            if exc_type is not None and _is_client_error(exc_type, exc_value):
+                record.levelno = logging.WARNING
+                record.levelname = "WARNING"
+
+                error_msg = ""
+                try:
+                    from bentoml.exceptions import BentoMLException
+                    from pydantic import ValidationError
+                    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+                    if isinstance(exc_value, ValidationError):
+                        errors = exc_value.errors()
+                        error_details = []
+                        for err in errors:
+                            loc = ".".join(str(l) for l in err.get("loc", []))
+                            msg = err.get("msg", "invalid value")
+                            error_details.append(f"{loc}: {msg}")
+                        error_msg = f"Validation Error (400): {'; '.join(error_details)}"
+                    elif isinstance(exc_value, StarletteHTTPException):
+                        status_code = getattr(exc_value, "status_code", 400)
+                        detail = getattr(exc_value, "detail", "Invalid request")
+                        error_msg = f"HTTP Error ({status_code}): {detail}"
+                    elif isinstance(exc_value, BentoMLException):
+                        status_code = 400
+                        try:
+                            status_code = exc_value.error_code.value
+                        except Exception:
+                            pass
+                        error_msg = f"BentoML Error ({status_code}): {str(exc_value)}"
+                    else:
+                        error_msg = f"Client Error: {str(exc_value)}"
+                except Exception as e:
+                    error_msg = f"Client Error parsing failed: {e}"
+
+                record.msg = f"{record.msg} - {error_msg}" if error_msg else record.msg
+                record.args = ()
+                record.exc_info = None
+
+        return True
 
 
 def _drop_color_message_key(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
@@ -157,6 +217,7 @@ def configure_logging() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(ProcessorFormatter(processors=renderer_processors, foreign_pre_chain=foreign_pre_chain))
     handler.setLevel(level)
+    handler.addFilter(ClientErrorFilter())
 
     root_logger = logging.getLogger()
     root_logger.handlers.clear()

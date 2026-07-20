@@ -3,7 +3,7 @@ from faster_whisper import WhisperModel
 
 from api_models.enums import ResponseFormat
 from api_models.output_models import segments_to_response
-from config import WhisperModelConfig
+from config import WhisperModelConfig, faster_whisper_config
 from core import Segment
 from model_manager import WhisperModelProvider
 
@@ -14,7 +14,7 @@ class TestFasterWhisperBug:
     )
     def test_transcribe_compare_with_faster_whisper(self):
         # given
-        model_name = "large-v3"
+        model_name = faster_whisper_config.default_model_name
         audio_file_name = "../assets/RecordedAudio.wav"
 
         model = WhisperModel(model_name)

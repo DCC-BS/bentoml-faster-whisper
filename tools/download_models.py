@@ -22,7 +22,8 @@ def main() -> None:
     print(f"Downloading Whisper model: {model}", flush=True)
     download_model(model)
 
-    token = os.getenv("HF_TOKEN") or None
+    raw_token = os.getenv("HF_TOKEN")
+    token = raw_token.strip() if raw_token else None
     if not token:
         print("HF_TOKEN not set; skipping pyannote pre-download", flush=True)
         return

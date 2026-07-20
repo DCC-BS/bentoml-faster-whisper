@@ -37,7 +37,7 @@ integration: ## Run integration tests (requires a running service)
 docker-build: ## Build and tag the Docker image (set HF_TOKEN to bake the gated pyannote weights)
 	$(eval VERSION := $(shell uv version --short))
 	@echo "🐳 Building Docker image faster-whisper:v$(VERSION)"
-	@DOCKER_BUILDKIT=1 docker build --secret id=hf_token,env=HF_TOKEN \
+	@HF_TOKEN="$(HF_TOKEN)" DOCKER_BUILDKIT=1 docker build --secret id=hf_token,env=HF_TOKEN \
 		-t quay.io/ktbs/fd-itbs/faster-whisper:v$(VERSION) .
 
 .PHONY: docker-push
