@@ -50,8 +50,6 @@ load_dotenv()
 
 TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
-MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", 4))
-MAX_LATENCY_MS = int(os.getenv("MAX_LATENCY_MS", 60 * 1000))
 # Load models into VRAM at worker startup instead of lazily on first request. Set to
 # "false" to keep the old lazy behaviour (e.g. token-less dev without cached weights).
 WARMUP_ON_STARTUP = os.getenv("WARMUP_ON_STARTUP", "true").lower() not in ("false", "0", "no")
@@ -72,22 +70,6 @@ DURATION_BUCKETS_S = [
 ]
 
 
-@bentoml.service(traffic={"timeout": TIMEOUT})
-class BatchFasterWhisper:
-    def __init__(self):
-        self.handler = FasterWhisperHandler()
-
-    @bentoml.on_startup
-    def warmup(self):
-        if WARMUP_ON_STARTUP:
-            self.handler.warmup()
-
-    @bentoml.api(batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS)
-    async def batch_transcribe(self, requests: list[TranscriptionRequest]) -> list[WhisperResponse]:
-        logger.debug(f"number of requests processed: {len(requests)}")
-        return [self.handler.transcribe_audio(request) for request in requests]
-
-
 @bentoml.service(
     title="Faster Whisper API",
     description="This is a custom Faster Whisper API that is fully compatible with the OpenAI SDK and offers additional options.",
@@ -104,8 +86,6 @@ class BatchFasterWhisper:
 )
 @bentoml.asgi_app(fastapi, path="/v1")
 class FasterWhisper:
-    batch = bentoml.depends(BatchFasterWhisper)
-
     def __init__(self):
         self.handler = FasterWhisperHandler()
         self.progress_handler = ProgressHandler()
@@ -124,13 +104,12 @@ class FasterWhisper:
         return self.handler.transcribe_audio(request)
 
     @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)  # type: ignore
-    async def batch_transcribe(self, **params: Any) -> WhisperResponse:
+    def batch_transcribe(self, **params: Any) -> WhisperResponse:
+        # Kept for API compatibility; the former separate batchable service is gone, so this
+        # now decodes on the resident model in-process, like /v1/audio/transcriptions.
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
-        results = await self.batch.batch_transcribe([request])
-        if not results:
-            raise RuntimeError("Batch transcription returned no results")
-        return results[0]
+        return self.handler.transcribe_audio(request)
 
     @bentoml.task(
         route="/v1/audio/transcriptions/task",

@@ -46,10 +46,9 @@ class TestIntegration:
         # given
         client = bentoml.SyncHTTPClient("http://localhost:8003")
         file = Path(__file__).resolve().parent.parent / "assets" / "example_audio.mp3"
-        request = {"file": "/Users/adr/Documents/repos/FasterWhisper-BentoML/tests/assets/example_audio.mp3"}
 
         # when
-        result = client.batch_transcribe(requests=[request])  # type: ignore
+        result = client.batch_transcribe(file=file)  # type: ignore
 
         # then
         assert "I am just a sample audio text." in result

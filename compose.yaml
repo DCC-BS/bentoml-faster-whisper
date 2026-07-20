@@ -18,8 +18,6 @@ services:
       - NO_PROXY
       - TIMEOUT
       - MAX_CONCURRENCY
-      - MAX_BATCH_SIZE
-      - MAX_LATENCY_MS
       - HF_TOKEN=${HF_TOKEN}
     volumes:
       - hugging_face_cache:/home/app/.cache/huggingface
