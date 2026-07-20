@@ -145,13 +145,3 @@ def model_loads_total():
         name="model_loads",
         documentation="Total number of Whisper model loads",
     )
-
-
-@functools.lru_cache(maxsize=1)
-def model_unloads_total():
-    from prometheus_client import Counter
-
-    return Counter(
-        name="model_unloads",
-        documentation="Total number of Whisper model unloads",
-    )

@@ -54,6 +54,12 @@ with bentoml.SyncHTTPClient('http://localhost:3000') as client:
 
 Further examples (task, streaming) how to programmatically interact with the faster_whisper service can be found in `test_integration.py`
 
+#### Model
+
+This service serves a single Whisper model, `large-v2`. The `model` request field is kept for
+OpenAI-SDK compatibility but is validated: any value other than `large-v2` is rejected with a
+422. `GET /v1/models` and `GET /v1/models/large-v2` return that one model; any other name 404s.
+
 ### Speaker diarization
 
 The service bundles [pyannote](https://github.com/pyannote/pyannote-audio) speaker diarization

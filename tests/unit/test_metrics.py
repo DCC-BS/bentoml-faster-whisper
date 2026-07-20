@@ -41,7 +41,6 @@ def test_import_does_not_eagerly_import_prometheus_client():
         metrics.model_load_duration,
         metrics.models_loaded,
         metrics.model_loads_total,
-        metrics.model_unloads_total,
     ],
 )
 def test_accessor_is_idempotent_singleton(accessor):

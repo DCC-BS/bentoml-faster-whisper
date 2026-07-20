@@ -5,7 +5,7 @@ from api_models.enums import ResponseFormat
 from api_models.output_models import segments_to_response
 from config import WhisperModelConfig
 from core import Segment
-from model_manager import WhisperModelManager
+from model_manager import WhisperModelProvider
 
 
 class TestFasterWhisperBug:
@@ -18,15 +18,15 @@ class TestFasterWhisperBug:
         audio_file_name = "../assets/RecordedAudio.wav"
 
         model = WhisperModel(model_name)
-        model_manager = WhisperModelManager(WhisperModelConfig())
+        provider = WhisperModelProvider(WhisperModelConfig())
 
         # when
         segments_package, transcription_info_package = model.transcribe(audio_file_name)
 
-        with model_manager.load_model(model_name) as whisper:
-            segments_service, transcription_info_service = whisper.transcribe(
-                str(audio_file_name), temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-            )
+        whisper = provider.get()
+        segments_service, transcription_info_service = whisper.transcribe(
+            str(audio_file_name), temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        )
 
         text_package = segments_to_response(
             list(Segment.from_faster_whisper_segments(segments_package)),

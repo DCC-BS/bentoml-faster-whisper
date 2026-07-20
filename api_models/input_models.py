@@ -2,21 +2,26 @@ from typing import Annotated
 
 from annotated_types import Ge, Le
 from bentoml.exceptions import InvalidArgument
-from huggingface_hub.hf_api import ModelInfo
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 
 from api_models.enums import ResponseFormat, TimestampGranularity
-from api_models.output_models import ModelObject, logger
+from api_models.output_models import logger
 from config import faster_whisper_config
+
+
+def _validate_served_model(model: str) -> str:
+    served = faster_whisper_config.default_model_name
+    if model != served:
+        raise ValueError(f"Only '{served}' is served by this API; got '{model}'.")
+    return model
+
 
 ModelName = Annotated[
     str,
+    AfterValidator(_validate_served_model),
     Field(
-        description="The ID of the model. You can get a list of available models by calling `/v1/models`.",
-        examples=[
-            "Systran/faster-distil-whisper-large-v2",
-            "bofenghuang/whisper-large-v2-cv11-french-ct2",
-        ],
+        description=f"Whisper model to use. Only '{faster_whisper_config.default_model_name}' is served by this API.",
+        examples=[faster_whisper_config.default_model_name],
     ),
 ]
 
@@ -85,26 +90,6 @@ def _process_empty_response_format(response_format: str | ResponseFormat | bytes
 
 
 ValidatedResponseFormat = Annotated[ResponseFormat, BeforeValidator(_process_empty_response_format)]
-
-
-def hf_model_info_to_model_object(model: ModelInfo) -> ModelObject:
-    assert model.created_at is not None
-    assert model.card_data is not None
-    assert model.card_data.language is None or isinstance(model.card_data.language, str | list)
-    if model.card_data.language is None:
-        language = []
-    elif isinstance(model.card_data.language, str):
-        language = [model.card_data.language]
-    else:
-        language = model.card_data.language
-    transformed_model = ModelObject(
-        id=model.id,
-        created=int(model.created_at.timestamp()),
-        object_="model",
-        owned_by=model.id.split("/")[0],
-        language=language,
-    )
-    return transformed_model
 
 
 def validate_timestamp_granularities(response_format, timestamp_granularities, diarization: bool | None):

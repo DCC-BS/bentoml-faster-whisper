@@ -15,7 +15,7 @@ from config import WhisperModelConfig
 from diarization_service import DiarizationService
 from handlers.progress_handler import ProgressHandler
 from helpers.utils import get_audio_duration
-from model_manager import SelfDisposingModel, WhisperModelManager
+from model_manager import WhisperModelProvider
 
 SHORT_AUDIO = Path("./tests/assets/example_audio.mp3")
 LONG_AUDIO = Path("./tests/assets/long_example_audio.mp3")
@@ -33,49 +33,7 @@ def _request(file: Path, **overrides) -> TranscriptionRequest:
 
 
 @pytest.mark.model
-def test_model_ref_released_after_full_transcription(handler):
-    request = _request(SHORT_AUDIO)
-
-    result = handler.transcribe_audio(request)
-
-    assert result is not None
-    sdm = handler.model_manager.loaded_models[request.model]
-    assert sdm.ref_count == 0, "model ref must return to 0 after a completed transcription"
-    assert sdm.model is not None, "model must stay loaded (ttl!=0) for reuse"
-
-
-@pytest.mark.model
-def test_model_ref_held_until_generator_consumed(handler):
-    request = _request(LONG_AUDIO)
-
-    segments, _info = handler.prepare_audio_segments(request)
-    sdm = handler.model_manager.loaded_models[request.model]
-
-    # The generator is lazy, so the model must stay held while segments remain to be produced.
-    next(segments)
-    assert sdm.ref_count == 1, "model ref must be held while the generator is alive"
-
-    for _ in segments:
-        pass
-    assert sdm.ref_count == 0
-
-
-@pytest.mark.model
-def test_generator_close_releases_model_ref(handler):
-    request = _request(LONG_AUDIO)
-
-    segments, _info = handler.prepare_audio_segments(request)
-    sdm = handler.model_manager.loaded_models[request.model]
-    assert sdm.ref_count == 1
-
-    next(segments)
-    segments.close()  # simulate client disconnect mid-stream
-
-    assert sdm.ref_count == 0, "closing the generator must release the held model ref"
-
-
-@pytest.mark.model
-def test_streaming_endpoint_releases_ref_after_full_stream(service):
+def test_streaming_endpoint_completes_full_stream(service):
     request = _request(LONG_AUDIO)
     request_params = request.model_dump()
 
@@ -83,12 +41,10 @@ def test_streaming_endpoint_releases_ref_after_full_stream(service):
 
     assert chunks
     assert all(chunk.endswith("\n") and not chunk.startswith("data:") for chunk in chunks)
-    sdm = service.handler.model_manager.loaded_models[request.model]
-    assert sdm.ref_count == 0
 
 
 @pytest.mark.model
-def test_concurrent_transcriptions_release_model_ref(handler):
+def test_concurrent_transcriptions_succeed(handler):
     errors: list[BaseException] = []
     results: list[object] = []
     lock = threading.Lock()
@@ -110,23 +66,28 @@ def test_concurrent_transcriptions_release_model_ref(handler):
 
     assert not errors, f"concurrent transcriptions raised: {errors}"
     assert len(results) == 6
-    sdm = handler.model_manager.loaded_models[_request(SHORT_AUDIO).model]
-    assert sdm.ref_count == 0, "ref count must net to 0 after concurrent load"
 
 
-def test_self_disposing_model_concurrent_ref_counting():
-    """The ref-counting context manager is correct under heavy concurrent use."""
+def test_provider_loads_model_once_under_concurrency(monkeypatch):
+    """The provider loads the model exactly once and hands the same instance to every
+    caller, even when many threads race on the first get()."""
+    provider = WhisperModelProvider(WhisperModelConfig())
     loads: list[int] = []
 
-    def load_fn() -> object:
+    def fake_load() -> object:
         loads.append(1)
+        time.sleep(0.005)  # widen the race window
         return object()
 
-    model = SelfDisposingModel("dummy", load_fn=load_fn, ttl=-1)
+    monkeypatch.setattr(provider, "_load", fake_load)
+
+    results: list[object] = []
+    lock = threading.Lock()
 
     def use():
-        with model:
-            time.sleep(0.005)
+        model = provider.get()
+        with lock:
+            results.append(model)
 
     threads = [threading.Thread(target=use) for _ in range(25)]
     for t in threads:
@@ -134,33 +95,8 @@ def test_self_disposing_model_concurrent_ref_counting():
     for t in threads:
         t.join()
 
-    assert model.ref_count == 0
-    assert len(loads) == 1, "model must be loaded exactly once despite concurrent access"
-
-
-def test_unload_model_does_not_deadlock(monkeypatch):
-    """unload_model() holds WhisperModelManager._lock while SelfDisposingModel.unload() calls
-    back into _handle_model_unload(), which acquires the same lock. A non-reentrant Lock hangs
-    the calling thread forever. The TTL path never hit this: it unloads from a Timer thread
-    that holds no lock.
-    """
-    manager = WhisperModelManager(WhisperModelConfig(ttl=-1))
-    monkeypatch.setattr(manager, "_load_fn", lambda model_id: object())
-
-    with manager.load_model("dummy"):
-        pass
-
-    unloaded = threading.Event()
-
-    def unload():
-        manager.unload_model("dummy")
-        unloaded.set()
-
-    # daemon so a regression hangs this test rather than the whole interpreter.
-    threading.Thread(target=unload, daemon=True).start()
-
-    assert unloaded.wait(timeout=10), "unload_model() deadlocked re-acquiring the manager lock"
-    assert "dummy" not in manager.loaded_models
+    assert len(loads) == 1, "model must be loaded exactly once despite concurrent get()"
+    assert results and all(m is results[0] for m in results), "every caller gets the same instance"
 
 
 def test_progress_handler_instances_are_isolated():

@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import sys
 import time
 from typing import Callable, Iterable
 
@@ -18,7 +17,7 @@ from api_models.output_models import (
     segments_to_response,
 )
 from api_models.TranscriptionRequest import TranscriptionRequest
-from config import WhisperModelConfig, faster_whisper_config
+from config import WhisperModelConfig
 from core import Segment
 from diarization_service import DiarizationSegment, DiarizationService
 from helpers import metrics
@@ -37,7 +36,7 @@ from helpers.speech_regions import (
 )
 from helpers.transcription_cleaner import clean_transcription_segments
 from helpers.whiper_diarization_merger import merge_whipser_diarization
-from model_manager import SelfDisposingModel, WhisperModelManager
+from model_manager import WhisperModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -51,33 +50,26 @@ def _strip_words(segments: Iterable[Segment]) -> Iterable[Segment]:
 
 class FasterWhisperHandler:
     def __init__(self):
-        self.model_manager = WhisperModelManager(WhisperModelConfig())
+        self.model_manager = WhisperModelProvider(WhisperModelConfig())
         # Loaded lazily on first diarize() so workers that never diarize don't pin a pipeline to the GPU.
         self.diarization = DiarizationService()
-        # Held open by warmup() to pin the default model resident (see warmup()).
-        self._pinned_model: SelfDisposingModel[WhisperModel] | None = None
 
-    def warmup(self, model_name: str | None = None, warm_diarization: bool = True) -> None:
+    def warmup(self, warm_diarization: bool = True) -> None:
         """Load models into VRAM at worker startup so the first request is fast.
 
-        The default Whisper model is *pinned*: we hold a ref on its SelfDisposingModel
-        so the idle TTL never unloads it, and run a tiny synthetic decode to force
-        weight upload plus CUDA/cuBLAS kernel initialisation. The pyannote pipeline is
-        loaded too (it stays resident with no TTL of its own).
+        Loads the single resident Whisper model and runs a tiny synthetic decode to
+        force weight upload plus CUDA/cuBLAS kernel initialisation. The pyannote
+        pipeline is loaded too (it stays resident for the process lifetime).
 
         Resilient by design: a failure to warm either model logs and returns rather
         than crashing the worker — e.g. a token-less deployment that never diarizes.
         """
-        model_name = model_name or faster_whisper_config.default_model_name
         try:
-            if self._pinned_model is None:
-                model = self.model_manager.load_model(model_name)
-                whisper = model.__enter__()  # ref held for the process lifetime
-                self._pinned_model = model
-                self._warm_decode(whisper)
-                logger.info("Warmed and pinned Whisper model %s", model_name)
+            whisper = self.model_manager.get()
+            self._warm_decode(whisper)
+            logger.info("Warmed Whisper model %s", self.model_manager.model_id)
         except Exception:
-            logger.exception("Whisper warmup failed for model %s", model_name)
+            logger.exception("Whisper warmup failed for model %s", self.model_manager.model_id)
 
         if warm_diarization:
             try:
@@ -93,12 +85,6 @@ class FasterWhisperHandler:
         segments, _ = whisper.transcribe(silent, language="en")
         for _ in segments:  # drain the lazy generator so the decode actually runs
             pass
-
-    def release(self) -> None:
-        """Release the pinned default model (worker shutdown)."""
-        if self._pinned_model is not None:
-            self._pinned_model.__exit__(None, None, None)
-            self._pinned_model = None
 
     def transcribe_audio(
         self,
@@ -121,7 +107,7 @@ class FasterWhisperHandler:
     def translate_audio(
         self,
         file,
-        model,
+        model,  # accepted for OpenAI-SDK compatibility; validated to the served model, then ignored.
         prompt,
         response_format,
         temperature,
@@ -140,34 +126,33 @@ class FasterWhisperHandler:
         prompt_reset_on_temperature,
     ):
         t0 = time.perf_counter()
-        # Consume the lazy generator inside the context manager so the model ref-count is held for the whole decode.
-        with self.model_manager.load_model(model) as whisper:
-            try:
-                segments, transcription_info = whisper.transcribe(
-                    file,
-                    task=Task.TRANSLATE,
-                    initial_prompt=prompt,
-                    temperature=temperature,
-                    word_timestamps=response_format == ResponseFormat.VERBOSE_JSON,
-                    best_of=best_of,
-                    hotwords=hotwords,
-                    vad_filter=vad_filter,
-                    vad_parameters=vad_parameters,
-                    condition_on_previous_text=condition_on_previous_text,
-                    beam_size=beam_size,
-                    patience=patience,
-                    repetition_penalty=repetition_penalty,
-                    length_penalty=length_penalty,
-                    no_repeat_ngram_size=no_repeat_ngram_size,
-                    compression_ratio_threshold=compression_ratio_threshold,
-                    log_prob_threshold=log_prob_threshold,
-                    prompt_reset_on_temperature=prompt_reset_on_temperature,
-                )
-                segments = Segment.from_faster_whisper_segments(segments)
-                response = segments_to_response(segments, transcription_info, response_format)
-            except BaseException as e:
-                metrics.transcription_failures().labels("decode", type(e).__name__).inc()
-                raise
+        whisper = self.model_manager.get()
+        try:
+            segments, transcription_info = whisper.transcribe(
+                file,
+                task=Task.TRANSLATE,
+                initial_prompt=prompt,
+                temperature=temperature,
+                word_timestamps=response_format == ResponseFormat.VERBOSE_JSON,
+                best_of=best_of,
+                hotwords=hotwords,
+                vad_filter=vad_filter,
+                vad_parameters=vad_parameters,
+                condition_on_previous_text=condition_on_previous_text,
+                beam_size=beam_size,
+                patience=patience,
+                repetition_penalty=repetition_penalty,
+                length_penalty=length_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+                compression_ratio_threshold=compression_ratio_threshold,
+                log_prob_threshold=log_prob_threshold,
+                prompt_reset_on_temperature=prompt_reset_on_temperature,
+            )
+            segments = Segment.from_faster_whisper_segments(segments)
+            response = segments_to_response(segments, transcription_info, response_format)
+        except BaseException as e:
+            metrics.transcription_failures().labels("decode", type(e).__name__).inc()
+            raise
 
         metrics.audio_length().observe(transcription_info.duration)
         metrics.detected_language().labels(transcription_info.language or "unknown").inc()
@@ -225,11 +210,10 @@ class FasterWhisperHandler:
             original_duration_s = decoded.shape[0] / WHISPER_SAMPLE_RATE
             collapsed = collapse_decoded_to_speech(decoded, intervals)
 
-        # transcribe() returns a lazy generator that only decodes while iterated, so the model ref-count
-        # must be held for the lifetime of the returned generator, not just this method call. We enter the
-        # context manager here and exit it when the generator is exhausted, closed, or raises.
-        model_ctx = self.model_manager.load_model(request.model)
-        whisper = model_ctx.__enter__()
+        # The single served model is resident and never unloaded, so the lazy transcribe()
+        # generator can safely outlive this method with no ref guard. request.model is already
+        # validated to equal the served model, so it is not used for loading.
+        whisper = self.model_manager.get()
         try:
             decode_options = self._decode_options(request, word_timestamps)
             if collapsed is not None:
@@ -278,7 +262,6 @@ class FasterWhisperHandler:
                 segments = _strip_words(segments)
         except BaseException as e:
             metrics.transcription_failures().labels("decode", type(e).__name__).inc()
-            model_ctx.__exit__(*sys.exc_info())
             raise
 
         metrics.audio_length().observe(transcription_info.duration)
@@ -291,7 +274,6 @@ class FasterWhisperHandler:
                 metrics.transcription_failures().labels("decode", type(e).__name__).inc()
                 raise
             finally:
-                model_ctx.__exit__(None, None, None)
                 elapsed = time.perf_counter() - t0
                 if elapsed > 0 and transcription_info.duration > 0:
                     metrics.realtime_factor().observe(transcription_info.duration / elapsed)

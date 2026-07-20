@@ -24,13 +24,11 @@ from api_models.TranscriptionRequest import TranscriptionRequest
 from config import WhisperModelConfig, faster_whisper_config
 from diarization_service import DiarizationSegment, DiarizationService
 from handlers.fast_whipser_handler import FasterWhisperHandler
-from model_manager import WhisperModelManager
+from model_manager import WhisperModelProvider
 
-# One resident model manager for the life of the process: ttl=-1 keeps the Whisper
-# model (and, once loaded, the diarization pipeline) loaded between UI interactions
-# instead of reloading per click, and avoids arming the non-daemon unload timer that
-# a finite ttl would (see tests/conftest.py for the same pattern).
-_model_manager = WhisperModelManager(WhisperModelConfig(ttl=-1))
+# One resident model provider for the life of the process: the model loads once and
+# stays loaded between UI interactions instead of reloading per click.
+_model_manager = WhisperModelProvider(WhisperModelConfig())
 _handler = FasterWhisperHandler()
 _handler.model_manager = _model_manager
 

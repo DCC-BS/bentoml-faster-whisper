@@ -1,16 +1,14 @@
 import logging
 import os
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 import bentoml
-import huggingface_hub
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as FastAPIPath
 
 from api_models.input_models import (
-    hf_model_info_to_model_object,
     validate_timestamp_granularities,
 )
 from api_models.output_models import (
@@ -23,16 +21,26 @@ from api_models.output_models import (
 from api_models.ProgressResponse import ProgressResponse
 from api_models.TranscriptionRequest import TranscriptionRequest
 from api_models.TranslationRequest import TranslationRequest
+from config import faster_whisper_config
 from core import Segment
 from handlers.fast_whipser_handler import FasterWhisperHandler
 from handlers.progress_handler import ProgressHandler
 from helpers.logger import configure_logging
 from helpers.transcription_cleaner import clean_transcription_segments
 
-if TYPE_CHECKING:
-    from huggingface_hub.hf_api import ModelInfo
-
 logger = logging.getLogger(__name__)
+
+
+def _served_model_object() -> ModelObject:
+    """The single model this API serves, as a static OpenAI-style ModelObject."""
+    return ModelObject(
+        id=faster_whisper_config.default_model_name,
+        created=1668556800,  # large-v2 release (2022-11-16); static, no HF query.
+        object_="model",
+        owned_by="Systran",
+        language=[],
+    )
+
 
 fastapi = FastAPI()
 
@@ -74,10 +82,6 @@ class BatchFasterWhisper:
         if WARMUP_ON_STARTUP:
             self.handler.warmup()
 
-    @bentoml.on_shutdown
-    def release(self):
-        self.handler.release()
-
     @bentoml.api(batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS)
     async def batch_transcribe(self, requests: list[TranscriptionRequest]) -> list[WhisperResponse]:
         logger.debug(f"number of requests processed: {len(requests)}")
@@ -108,14 +112,10 @@ class FasterWhisper:
 
     @bentoml.on_startup
     def warmup(self):
-        # Runs once per worker: load the default Whisper model (pinned resident) and the
-        # pyannote pipeline into VRAM so the first request doesn't pay the load cost.
+        # Runs once per worker: load the resident Whisper model and the pyannote
+        # pipeline into VRAM so the first request doesn't pay the load cost.
         if WARMUP_ON_STARTUP:
             self.handler.warmup()
-
-    @bentoml.on_shutdown
-    def release(self):
-        self.handler.release()
 
     @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)  # type: ignore
     def transcribe(self, **params: Any) -> WhisperResponse:
@@ -216,40 +216,19 @@ class FasterWhisper:
 
     @fastapi.get("/models")
     def get_models(self) -> ModelListResponse:
-        models = huggingface_hub.list_models(
-            filter="ctranslate2", pipeline_tag="automatic-speech-recognition", cardData=True
-        )
-        models = list(models)
-        models.sort(key=lambda model: model.downloads, reverse=True)
-        transformed_models = [hf_model_info_to_model_object(model) for model in models]
-        return ModelListResponse(data=transformed_models)
+        return ModelListResponse(data=[_served_model_object()])
 
     @fastapi.get("/models/{model_name:path}")
     def get_model(
         self,
-        model_name: Annotated[str, FastAPIPath(examples=["Systran/faster-distil-whisper-large-v2"])],
+        model_name: Annotated[str, FastAPIPath(examples=[faster_whisper_config.default_model_name])],
     ) -> ModelObject:
-        models = huggingface_hub.list_models(
-            search=str(model_name),
-            filter="ctranslate2",
-            pipeline_tag="automatic-speech-recognition",
-            cardData=True,
-        )
-        models = list(models)
-        models.sort(key=lambda model: model.downloads, reverse=True)  # noqa: PGH003
-        if len(models) == 0:
-            raise HTTPException(status_code=404, detail="No models found.")
-        exact_match: ModelInfo | None = None
-        for model in models:
-            if model.id == model_name:
-                exact_match = model
-                break
-        if exact_match is None:
+        if model_name != faster_whisper_config.default_model_name:
             raise HTTPException(
                 status_code=404,
-                detail=f"Model doesn't exists. Possible matches: {', '.join([model.id for model in models])}",
+                detail=f"Model '{model_name}' not found. Only '{faster_whisper_config.default_model_name}' is served.",
             )
-        return hf_model_info_to_model_object(exact_match)
+        return _served_model_object()
 
     def _prepare_transcribe(self, request: TranscriptionRequest):
         validate_timestamp_granularities(

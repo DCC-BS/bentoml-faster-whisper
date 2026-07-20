@@ -96,7 +96,3 @@ def test_concurrent_transcriptions_on_larger_file(service):
     assert not errors, f"concurrent transcriptions raised: {errors}"
     assert len(results) == 4
     assert all(text.strip() for text in results)
-
-    model_key = TranscriptionRequest.model_validate({"file": LONG_AUDIO}).model
-    sdm = service.handler.model_manager.loaded_models[model_key]
-    assert sdm.ref_count == 0, "model ref must net to 0 after concurrent load"
