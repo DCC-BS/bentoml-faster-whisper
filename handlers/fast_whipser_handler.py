@@ -151,14 +151,11 @@ class FasterWhisperHandler:
             segments = Segment.from_faster_whisper_segments(segments)
             response = segments_to_response(segments, transcription_info, response_format)
         except Exception as e:
-            metrics.transcription_failures().labels("decode", type(e).__name__).inc()
+            metrics.record_failure("decode", e)
             raise
 
-        metrics.audio_length().observe(transcription_info.duration)
-        metrics.detected_language().labels(transcription_info.language or "unknown").inc()
-        elapsed = time.perf_counter() - t0
-        if elapsed > 0 and transcription_info.duration > 0:
-            metrics.realtime_factor().observe(transcription_info.duration / elapsed)
+        metrics.observe_decode(transcription_info.duration, transcription_info.language)
+        metrics.observe_realtime_factor(t0, transcription_info.duration)
         return response
 
     def prepare_audio_segments(
@@ -184,7 +181,7 @@ class FasterWhisperHandler:
                     )
                 )
             except Exception as e:
-                metrics.transcription_failures().labels("diarization", type(e).__name__).inc()
+                metrics.record_failure("diarization", e)
                 raise
             metrics.diarization_duration().observe(time.perf_counter() - dia_start)
             metrics.speaker_count().observe(len({seg.speaker for seg in dia_segments}))
@@ -261,22 +258,19 @@ class FasterWhisperHandler:
             if "word" not in request.timestamp_granularities:
                 segments = _strip_words(segments)
         except Exception as e:
-            metrics.transcription_failures().labels("decode", type(e).__name__).inc()
+            metrics.record_failure("decode", e)
             raise
 
-        metrics.audio_length().observe(transcription_info.duration)
-        metrics.detected_language().labels(transcription_info.language or "unknown").inc()
+        metrics.observe_decode(transcription_info.duration, transcription_info.language)
 
         def _held_segments():
             try:
                 yield from segments
             except Exception as e:
-                metrics.transcription_failures().labels("decode", type(e).__name__).inc()
+                metrics.record_failure("decode", e)
                 raise
             finally:
-                elapsed = time.perf_counter() - t0
-                if elapsed > 0 and transcription_info.duration > 0:
-                    metrics.realtime_factor().observe(transcription_info.duration / elapsed)
+                metrics.observe_realtime_factor(t0, transcription_info.duration)
 
         return _held_segments(), transcription_info
 

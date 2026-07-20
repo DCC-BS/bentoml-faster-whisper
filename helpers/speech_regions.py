@@ -1,14 +1,13 @@
 import itertools
 import math
-import os
 from typing import Iterable, Protocol
 
 import numpy as np
-from faster_whisper.audio import decode_audio
 from faster_whisper.transcribe import restore_speech_timestamps
 
 from core import Segment, Word
 from helpers.logger import get_logger
+from helpers.utils import positive_env
 
 logger = get_logger(__name__)
 
@@ -22,21 +21,6 @@ SPEECH_PAD_S = 0.3
 MERGE_GAP_S = 1.0
 
 
-def _positive_float_env(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        value = float(raw)
-    except ValueError:
-        logger.warning("Invalid env var value; using default", name=name, raw=raw, default=default)
-        return default
-    if value <= 0:
-        logger.warning("Env var must be > 0; using default", name=name, value=value, default=default)
-        return default
-    return value
-
-
 # Upper bound on the wall-clock span of speech decoded in a single whisper.transcribe()
 # call. Continuous speech (radio, panel discussions) collapses into intervals many minutes
 # long; handing such a block to one decode triggers Whisper's long-form seek drift, where
@@ -45,7 +29,7 @@ def _positive_float_env(name: str, default: float) -> float:
 # to stay on track. 60 s is ~two 30 s Whisper windows: enough decode context for quality, but
 # short enough that drift does not accumulate (measured: drift reappears around ~90 s). Override
 # with WHISPER_MAX_DECODE_RUN_S.
-MAX_RUN_S = _positive_float_env("WHISPER_MAX_DECODE_RUN_S", 60.0)
+MAX_RUN_S = positive_env("WHISPER_MAX_DECODE_RUN_S", 60.0, float)
 
 # A restored word is snapped into its speech chunk, so its midpoint sits within that
 # chunk's original-timeline interval; this only absorbs 2-decimal rounding and the
@@ -141,24 +125,6 @@ def collapse_decoded_to_speech(
 
     audio = np.concatenate([decoded[c["start"] : c["end"]] for c in speech_chunks])
     return audio, speech_chunks
-
-
-def collapse_audio_to_speech(
-    path: str,
-    intervals: Iterable[tuple[float, float]],
-    sampling_rate: int = WHISPER_SAMPLE_RATE,
-) -> tuple[np.ndarray, list[dict], float] | None:
-    """Decode ``path`` and collapse it to the given speech intervals; see
-    collapse_decoded_to_speech(). Additionally returns the original duration.
-    """
-    decoded = decode_audio(path, sampling_rate=sampling_rate)
-    original_duration_s = decoded.shape[0] / sampling_rate
-    collapsed = collapse_decoded_to_speech(decoded, intervals, sampling_rate)
-    if collapsed is None:
-        return None
-
-    audio, speech_chunks = collapsed
-    return audio, speech_chunks, original_duration_s
 
 
 def group_intervals_by_language(

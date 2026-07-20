@@ -12,6 +12,7 @@ from pyannote.audio import Pipeline
 from pyannote.core import Segment
 
 from helpers.logger import get_logger, log_exceptions
+from helpers.utils import positive_env
 
 logger = get_logger(__name__)
 
@@ -107,22 +108,6 @@ def _as_wav(audio_path: str) -> Iterator[str]:
         Path(tmp_path).unlink(missing_ok=True)
 
 
-def _positive_int_env(name: str, default: int) -> int:
-    """Parse a positive-int env var, falling back to default on missing/invalid/non-positive values."""
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        logger.warning("Invalid env var value; using default", name=name, raw=raw, default=default)
-        return default
-    if value < 1:
-        logger.warning("Env var must be >= 1; using default", name=name, value=value, default=default)
-        return default
-    return value
-
-
 class DiarizationService:
     """
     A service for speaker diarization using the pyannote.audio library.
@@ -133,8 +118,8 @@ class DiarizationService:
         # Guards both lazy loading and inference: a pyannote pipeline is not thread-safe.
         self._lock = threading.Lock()
         # Lower batch sizes to reduce peak GPU activation memory on large files / tight GPUs.
-        self._segmentation_batch_size = _positive_int_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 4)
-        self._embedding_batch_size = _positive_int_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 4)
+        self._segmentation_batch_size = positive_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 4, int)
+        self._embedding_batch_size = positive_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 4, int)
 
     @log_exceptions
     def load(self):

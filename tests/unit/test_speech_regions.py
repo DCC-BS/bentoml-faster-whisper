@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 
-import numpy as np
 from faster_whisper.transcribe import Segment as FWSegment
 from faster_whisper.transcribe import Word as FWWord
 
 import helpers.speech_regions as sr
 from helpers.speech_regions import (
-    collapse_audio_to_speech,
     diarization_to_speech_intervals,
     group_intervals_by_language,
     restore_and_split_segments,
@@ -121,28 +119,6 @@ def test_chunks_entirely_past_audio_end_are_dropped():
     chunks = speech_intervals_to_chunks([(11.0, 12.0)], audio_length_samples=160000, sampling_rate=16000)
 
     assert chunks == []
-
-
-def test_collapse_audio_to_speech_concatenates_only_speech(monkeypatch):
-    decoded = np.arange(160000, dtype=np.float32)  # 10s at 16 kHz
-    monkeypatch.setattr(sr, "decode_audio", lambda path, sampling_rate: decoded)
-
-    collapsed = collapse_audio_to_speech("x.wav", [(0.0, 1.0), (5.0, 6.0)], 16000)
-    assert collapsed is not None
-    audio, chunks, duration = collapsed
-
-    assert duration == 10.0
-    assert chunks == [{"start": 0, "end": 16000}, {"start": 80000, "end": 96000}]
-    assert audio.shape[0] == 32000
-    np.testing.assert_array_equal(audio[:16000], decoded[0:16000])
-    np.testing.assert_array_equal(audio[16000:], decoded[80000:96000])
-
-
-def test_collapse_audio_to_speech_returns_none_without_usable_chunks(monkeypatch):
-    decoded = np.arange(16000, dtype=np.float32)  # 1s — the interval is entirely past the end
-    monkeypatch.setattr(sr, "decode_audio", lambda path, sampling_rate: decoded)
-
-    assert collapse_audio_to_speech("x.wav", [(5.0, 6.0)], 16000) is None
 
 
 def test_restore_splits_segment_straddling_the_seam():

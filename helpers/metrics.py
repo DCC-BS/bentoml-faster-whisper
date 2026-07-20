@@ -18,6 +18,7 @@ timeseries in CollectorRegistry" error.
 """
 
 import functools
+import time
 
 AUDIO_INPUT_LENGTH_BUCKETS_S = [
     10.0,
@@ -145,3 +146,27 @@ def model_loads_total():
         name="model_loads",
         documentation="Total number of Whisper model loads",
     )
+
+
+# --- Recording helpers -------------------------------------------------------
+# Every decode path shares the same instrumentation contract, so the label
+# conventions and the divide-by-zero guard live here rather than being
+# reconstructed at each handler call site.
+
+
+def record_failure(stage: str, exc: BaseException) -> None:
+    """Count one pipeline failure, labelled by stage and exception type."""
+    transcription_failures().labels(stage, type(exc).__name__).inc()
+
+
+def observe_decode(duration_s: float, language: str | None) -> None:
+    """Record the decoded audio length and detected/reported language for one request."""
+    audio_length().observe(duration_s)
+    detected_language().labels(language or "unknown").inc()
+
+
+def observe_realtime_factor(t0: float, duration_s: float) -> None:
+    """Record audio-seconds decoded per wall-clock second, timed from ``t0``."""
+    elapsed = time.perf_counter() - t0
+    if elapsed > 0 and duration_s > 0:
+        realtime_factor().observe(duration_s / elapsed)
