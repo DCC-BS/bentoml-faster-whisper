@@ -14,11 +14,13 @@ class TestIntegration:
         file = Path(__file__).resolve().parent.parent / "assets" / "example_audio.mp3"
 
         # when
-        response = requests.post(
-            "http://localhost:50001/v1/audio/transcriptions",
-            files={"file": open(file, "rb")},
-            data={"schmutzgeier": "schmutzgeier"},
-        )
+        with open(file, "rb") as f:
+            response = requests.post(
+                "http://localhost:50001/v1/audio/transcriptions",
+                files={"file": f},
+                data={"schmutzgeier": "schmutzgeier"},
+                timeout=30,
+            )
 
         # Assert that the response status code is 401 because the parameter 'schmutzgeier' is invalid
         assert response.status_code == 400, response.text
@@ -46,10 +48,9 @@ class TestIntegration:
         # given
         client = bentoml.SyncHTTPClient("http://localhost:8003")
         file = Path(__file__).resolve().parent.parent / "assets" / "example_audio.mp3"
-        request = {"file": "/Users/adr/Documents/repos/FasterWhisper-BentoML/tests/assets/example_audio.mp3"}
 
         # when
-        result = client.batch_transcribe(requests=[request])  # type: ignore
+        result = client.batch_transcribe(file=file)  # type: ignore
 
         # then
         assert "I am just a sample audio text." in result

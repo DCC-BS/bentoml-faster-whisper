@@ -1,14 +1,15 @@
 import itertools
 import math
-import os
 from typing import Iterable, Protocol
 
 import numpy as np
-from faster_whisper.audio import decode_audio
 from faster_whisper.transcribe import restore_speech_timestamps
-from loguru import logger
 
 from core import Segment, Word
+from helpers.logger import get_logger
+from helpers.utils import clamp, positive_env
+
+logger = get_logger(__name__)
 
 # Whisper models operate on 16 kHz mono audio; speech chunks are expressed in samples at this rate.
 WHISPER_SAMPLE_RATE = 16000
@@ -20,21 +21,6 @@ SPEECH_PAD_S = 0.3
 MERGE_GAP_S = 1.0
 
 
-def _positive_float_env(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        value = float(raw)
-    except ValueError:
-        logger.warning("Invalid value for {}: {!r}; using default {}", name, raw, default)
-        return default
-    if value <= 0:
-        logger.warning("{} must be > 0, got {}; using default {}", name, value, default)
-        return default
-    return value
-
-
 # Upper bound on the wall-clock span of speech decoded in a single whisper.transcribe()
 # call. Continuous speech (radio, panel discussions) collapses into intervals many minutes
 # long; handing such a block to one decode triggers Whisper's long-form seek drift, where
@@ -43,7 +29,7 @@ def _positive_float_env(name: str, default: float) -> float:
 # to stay on track. 60 s is ~two 30 s Whisper windows: enough decode context for quality, but
 # short enough that drift does not accumulate (measured: drift reappears around ~90 s). Override
 # with WHISPER_MAX_DECODE_RUN_S.
-MAX_RUN_S = _positive_float_env("WHISPER_MAX_DECODE_RUN_S", 60.0)
+MAX_RUN_S = positive_env("WHISPER_MAX_DECODE_RUN_S", 60.0, float)
 
 # A restored word is snapped into its speech chunk, so its midpoint sits within that
 # chunk's original-timeline interval; this only absorbs 2-decimal rounding and the
@@ -52,8 +38,11 @@ _SPLIT_TOLERANCE_S = 0.1
 
 
 class _TimedSegment(Protocol):
-    start: float
-    end: float
+    @property
+    def start(self) -> float: ...
+
+    @property
+    def end(self) -> float: ...
 
 
 def diarization_to_speech_intervals(
@@ -136,24 +125,6 @@ def collapse_decoded_to_speech(
 
     audio = np.concatenate([decoded[c["start"] : c["end"]] for c in speech_chunks])
     return audio, speech_chunks
-
-
-def collapse_audio_to_speech(
-    path: str,
-    intervals: Iterable[tuple[float, float]],
-    sampling_rate: int = WHISPER_SAMPLE_RATE,
-) -> tuple[np.ndarray, list[dict], float] | None:
-    """Decode ``path`` and collapse it to the given speech intervals; see
-    collapse_decoded_to_speech(). Additionally returns the original duration.
-    """
-    decoded = decode_audio(path, sampling_rate=sampling_rate)
-    original_duration_s = decoded.shape[0] / sampling_rate
-    collapsed = collapse_decoded_to_speech(decoded, intervals, sampling_rate)
-    if collapsed is None:
-        return None
-
-    audio, speech_chunks = collapsed
-    return audio, speech_chunks, original_duration_s
 
 
 def group_intervals_by_language(
@@ -287,8 +258,8 @@ def restore_and_split_segments(
 
     next_id = 0
     for seg in core_segments:
-        seg.start = _clamp(seg.start, 0.0, original_duration_s)
-        seg.end = _clamp(seg.end, 0.0, original_duration_s)
+        seg.start = clamp(seg.start, 0.0, original_duration_s)
+        seg.end = clamp(seg.end, 0.0, original_duration_s)
 
         if not seg.words:
             seg.id = next_id
@@ -297,17 +268,13 @@ def restore_and_split_segments(
             continue
 
         for word in seg.words:
-            word.start = _clamp(word.start, 0.0, original_duration_s)
-            word.end = _clamp(word.end, 0.0, original_duration_s)
+            word.start = clamp(word.start, 0.0, original_duration_s)
+            word.end = clamp(word.end, 0.0, original_duration_s)
 
         for piece in _split_segment_by_intervals(seg, intervals):
             piece.id = next_id
             next_id += 1
             yield piece
-
-
-def _clamp(value: float, low: float, high: float) -> float:
-    return min(max(value, low), high)
 
 
 def _interval_index(intervals: list[tuple[float, float]], midpoint: float) -> int | None:

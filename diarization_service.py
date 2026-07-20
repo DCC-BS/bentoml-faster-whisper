@@ -8,9 +8,13 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, cast
 
 import pyannote.audio as _pyannote_audio
 import torch
-from loguru import logger
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
+
+from helpers.logger import get_logger, log_exceptions
+from helpers.utils import clamp, positive_env
+
+logger = get_logger(__name__)
 
 # Ordered weights for the pyannote speaker-diarization steps (they fire in this order). "embeddings"
 # is the heavy GPU step that reports granular completed/total, so it gets the bulk of the band.
@@ -54,7 +58,7 @@ class _DiarizationProgressHook:
         if weight is None:
             return  # unknown step: leave the bar where it is
         within = (completed / total) if (total and completed is not None) else 1.0
-        within = min(max(within, 0.0), 1.0)
+        within = clamp(within, 0.0, 1.0)
         fraction = min(self._base[step_name] + weight * within, 1.0)
         if fraction <= self._last:
             return  # pyannote emits completed=0 first; never move backwards
@@ -63,17 +67,14 @@ class _DiarizationProgressHook:
 
 
 class DiarizationSegment:
-    def __init__(self, segment: Segment, label: str, speaker: str):
+    def __init__(self, segment: Segment, speaker: str):
         self.segment = segment
-        self.label = label
         self.speaker = speaker
         self.start = segment.start
         self.end = segment.end
 
     def __str__(self):
-        return (
-            f"Segment: {self.segment}, Label: {self.label}, Speaker: {self.speaker}, Time: [{self.start} - {self.end}]"
-        )
+        return f"Segment: {self.segment}, Speaker: {self.speaker}, Time: [{self.start} - {self.end}]"
 
     def __repr__(self):
         return self.__str__()
@@ -97,27 +98,11 @@ def _as_wav(audio_path: str) -> Iterator[str]:
                 capture_output=True,
             )
         except subprocess.CalledProcessError as e:
-            logger.error("ffmpeg conversion failed: {}", e.stderr.decode(errors="replace"))
+            logger.error("ffmpeg conversion failed", stderr=e.stderr.decode(errors="replace"))
             raise
         yield tmp_path
     finally:
         Path(tmp_path).unlink(missing_ok=True)
-
-
-def _positive_int_env(name: str, default: int) -> int:
-    """Parse a positive-int env var, falling back to default on missing/invalid/non-positive values."""
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        logger.warning("Invalid value for %s: %r; using default %d", name, raw, default)
-        return default
-    if value < 1:
-        logger.warning("%s must be >= 1, got %d; using default %d", name, value, default)
-        return default
-    return value
 
 
 class DiarizationService:
@@ -130,10 +115,10 @@ class DiarizationService:
         # Guards both lazy loading and inference: a pyannote pipeline is not thread-safe.
         self._lock = threading.Lock()
         # Lower batch sizes to reduce peak GPU activation memory on large files / tight GPUs.
-        self._segmentation_batch_size = _positive_int_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 4)
-        self._embedding_batch_size = _positive_int_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 4)
+        self._segmentation_batch_size = positive_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 4, int)
+        self._embedding_batch_size = positive_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 4, int)
 
-    @logger.catch(reraise=True)
+    @log_exceptions
     def load(self):
         """
         Load the speaker diarization pipeline from the Hugging Face model hub.
@@ -154,15 +139,15 @@ class DiarizationService:
                 raise RuntimeError("Failed to load diarization pipeline")
 
             _version = getattr(_pyannote_audio, "__version__", "unknown")
-            logger.info("pyannote.audio version: {}", _version)
+            logger.info("pyannote.audio loaded", version=_version)
             try:
                 pipeline._models.segmentation_batch_size = self._segmentation_batch_size  # type: ignore
                 pipeline._models.embedding_batch_size = self._embedding_batch_size  # type: ignore
             except AttributeError:
                 logger.warning(
-                    "pipeline._models batch-size attributes not found (pyannote.audio {}); "
-                    "private API may have changed — batch sizes not configured",
-                    _version,
+                    "pipeline._models batch-size attributes not found; private API may have "
+                    "changed — batch sizes not configured",
+                    version=_version,
                 )
 
             if torch.cuda.is_available():
@@ -170,7 +155,7 @@ class DiarizationService:
 
             self.pipeline = pipeline
 
-    @logger.catch(reraise=True)
+    @log_exceptions
     def diarize(
         self,
         audio_path: str,
@@ -215,4 +200,4 @@ class DiarizationService:
         # pyannote types __call__ loosely; the speaker-diarization pipeline returns an
         # object carrying `speaker_diarization`, which the static union can't express.
         for turn, speaker in cast(Any, output).speaker_diarization:
-            yield DiarizationSegment(turn, speaker, speaker)
+            yield DiarizationSegment(turn, speaker)

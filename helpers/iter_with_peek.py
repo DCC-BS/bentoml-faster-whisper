@@ -1,6 +1,4 @@
-from typing import Iterable, TypeVar
-
-T = TypeVar("T")
+from typing import Iterable
 
 
 class IterWithPeek[T]:

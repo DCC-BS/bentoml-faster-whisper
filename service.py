@@ -1,16 +1,14 @@
 import logging
 import os
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 import bentoml
-import huggingface_hub
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as FastAPIPath
 
 from api_models.input_models import (
-    hf_model_info_to_model_object,
     validate_timestamp_granularities,
 )
 from api_models.output_models import (
@@ -23,17 +21,26 @@ from api_models.output_models import (
 from api_models.ProgressResponse import ProgressResponse
 from api_models.TranscriptionRequest import TranscriptionRequest
 from api_models.TranslationRequest import TranslationRequest
+from config import faster_whisper_config
 from core import Segment
 from handlers.fast_whipser_handler import FasterWhisperHandler
 from handlers.progress_handler import ProgressHandler
 from helpers.logger import configure_logging
-from helpers.timing import measure_processing_time
 from helpers.transcription_cleaner import clean_transcription_segments
 
-if TYPE_CHECKING:
-    from huggingface_hub.hf_api import ModelInfo
-
 logger = logging.getLogger(__name__)
+
+
+def _served_model_object() -> ModelObject:
+    """The single model this API serves, as a static OpenAI-style ModelObject."""
+    return ModelObject(
+        id=faster_whisper_config.default_model_name,
+        created=1668556800,  # large-v2 release (2022-11-16); static, no HF query.
+        object_="model",
+        owned_by="Systran",
+        language=[],
+    )
+
 
 fastapi = FastAPI()
 
@@ -43,8 +50,9 @@ load_dotenv()
 
 TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
-MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", 4))
-MAX_LATENCY_MS = int(os.getenv("MAX_LATENCY_MS", 60 * 1000))
+# Load models into VRAM at worker startup instead of lazily on first request. Set to
+# "false" to keep the old lazy behaviour (e.g. token-less dev without cached weights).
+WARMUP_ON_STARTUP = os.getenv("WARMUP_ON_STARTUP", "true").lower() not in ("false", "0", "no")
 DURATION_BUCKETS_S = [
     1.0,
     5.0,
@@ -60,17 +68,6 @@ DURATION_BUCKETS_S = [
     100.0,
     float("inf"),
 ]
-
-
-@bentoml.service(traffic={"timeout": TIMEOUT})
-class BatchFasterWhisper:
-    def __init__(self):
-        self.handler = FasterWhisperHandler()
-
-    @bentoml.api(batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS)
-    async def batch_transcribe(self, requests: list[TranscriptionRequest]) -> list[WhisperResponse]:
-        logger.debug(f"number of requests processed: {len(requests)}")
-        return [self.handler.transcribe_audio(request) for request in requests]
 
 
 @bentoml.service(
@@ -89,27 +86,30 @@ class BatchFasterWhisper:
 )
 @bentoml.asgi_app(fastapi, path="/v1")
 class FasterWhisper:
-    batch = bentoml.depends(BatchFasterWhisper)
-
     def __init__(self):
         self.handler = FasterWhisperHandler()
         self.progress_handler = ProgressHandler()
 
+    @bentoml.on_startup
+    def warmup(self):
+        # Runs once per worker: load the resident Whisper model and the pyannote
+        # pipeline into VRAM so the first request doesn't pay the load cost.
+        if WARMUP_ON_STARTUP:
+            self.handler.warmup()
+
     @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)  # type: ignore
-    @measure_processing_time
     def transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
         return self.handler.transcribe_audio(request)
 
     @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)  # type: ignore
-    async def batch_transcribe(self, **params: Any) -> WhisperResponse:
+    def batch_transcribe(self, **params: Any) -> WhisperResponse:
+        # Kept for API compatibility; the former separate batchable service is gone, so this
+        # now decodes on the resident model in-process, like /v1/audio/transcriptions.
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
-        results = await self.batch.batch_transcribe([request])
-        if not results:
-            raise RuntimeError("Batch transcription returned no results")
-        return results[0]
+        return self.handler.transcribe_audio(request)
 
     @bentoml.task(
         route="/v1/audio/transcriptions/task",
@@ -167,7 +167,6 @@ class FasterWhisper:
                 self.progress_handler.remove_progress(request.progress_id)
 
     @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)  # type: ignore
-    @measure_processing_time
     def streaming_transcribe(self, **params: Any) -> Generator[str, None, None]:
         request = TranscriptionRequest.from_dict(params)
 
@@ -184,12 +183,10 @@ class FasterWhisper:
             segments.close()
 
     @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)  # type: ignore
-    @measure_processing_time
     def translate(self, **params: Any) -> WhisperResponse:
         request = TranslationRequest.from_dict(params)
         self._configure_vad_options(request)
-        result = self.handler.translate_audio(**params)
-        return result
+        return self.handler.translate_audio(request)
 
     @fastapi.get("/progress/{progress_id}")
     def get_progress(self, progress_id: str) -> ProgressResponse:
@@ -197,40 +194,19 @@ class FasterWhisper:
 
     @fastapi.get("/models")
     def get_models(self) -> ModelListResponse:
-        models = huggingface_hub.list_models(
-            filter="ctranslate2", pipeline_tag="automatic-speech-recognition", cardData=True
-        )
-        models = list(models)
-        models.sort(key=lambda model: model.downloads, reverse=True)
-        transformed_models = [hf_model_info_to_model_object(model) for model in models]
-        return ModelListResponse(data=transformed_models)
+        return ModelListResponse(data=[_served_model_object()])
 
     @fastapi.get("/models/{model_name:path}")
     def get_model(
         self,
-        model_name: Annotated[str, FastAPIPath(examples=["Systran/faster-distil-whisper-large-v2"])],
+        model_name: Annotated[str, FastAPIPath(examples=[faster_whisper_config.default_model_name])],
     ) -> ModelObject:
-        models = huggingface_hub.list_models(
-            search=str(model_name),
-            filter="ctranslate2",
-            pipeline_tag="automatic-speech-recognition",
-            cardData=True,
-        )
-        models = list(models)
-        models.sort(key=lambda model: model.downloads, reverse=True)  # noqa: PGH003
-        if len(models) == 0:
-            raise HTTPException(status_code=404, detail="No models found.")
-        exact_match: ModelInfo | None = None
-        for model in models:
-            if model.id == model_name:
-                exact_match = model
-                break
-        if exact_match is None:
+        if model_name != faster_whisper_config.default_model_name:
             raise HTTPException(
                 status_code=404,
-                detail=f"Model doesn't exists. Possible matches: {', '.join([model.id for model in models])}",
+                detail=f"Model '{model_name}' not found. Only '{faster_whisper_config.default_model_name}' is served.",
             )
-        return hf_model_info_to_model_object(exact_match)
+        return _served_model_object()
 
     def _prepare_transcribe(self, request: TranscriptionRequest):
         validate_timestamp_granularities(

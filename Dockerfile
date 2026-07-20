@@ -17,6 +17,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-dev --no-install-project
 
+# Pre-download the default models into the image so the first request needs no network.
+# Placed before `COPY . /app` and bind-mounting only the script, so this heavy layer is
+# cached independently of application source changes (re-runs only when the script or the
+# deps change). The gated pyannote weights need HF_TOKEN as a BuildKit secret; without it
+# the whisper model is still baked and pyannote is skipped (see tools/download_models.py).
+ARG DEFAULT_WHISPER_MODEL=large-v2
+RUN --mount=type=secret,id=hf_token \
+    --mount=type=bind,source=tools/download_models.py,target=/tmp/download_models.py \
+    HF_HOME=/opt/models \
+    DEFAULT_WHISPER_MODEL="${DEFAULT_WHISPER_MODEL}" \
+    HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" \
+    /app/.venv/bin/python /tmp/download_models.py
+
 COPY . /app
 
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -48,6 +61,11 @@ RUN userdel -r ubuntu && \
 # uv-managed Python interpreter; the venv's python symlinks resolve here
 COPY --from=build /opt/uv/python /opt/uv/python
 COPY --from=build --chown=app:app /app /app
+
+# Baked model cache. Copied to the app user's default HF cache location so the runtime
+# finds it with no env var. When compose mounts the (empty) hugging_face_cache named
+# volume over this path, Docker seeds the volume from these contents on first start.
+COPY --from=build --chown=app:app /opt/models /home/app/.cache/huggingface
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONDONTWRITEBYTECODE=1

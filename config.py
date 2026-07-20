@@ -33,12 +33,6 @@ class WhisperModelConfig(BaseModel):
     compute_type: Quantization = Quantization.FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
     cpu_threads: int = 0
     num_workers: int = 1
-    ttl: int = Field(default=300, ge=-1)
-    """
-    Time in seconds until the model is unloaded if it is not being used.
-    -1: Never unload the model.
-    0: Unload the model immediately after usage.
-    """
 
 
 class FasterWhisperConfig(BaseModel):

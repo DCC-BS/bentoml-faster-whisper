@@ -3,9 +3,9 @@ from faster_whisper import WhisperModel
 
 from api_models.enums import ResponseFormat
 from api_models.output_models import segments_to_response
-from config import WhisperModelConfig
+from config import WhisperModelConfig, faster_whisper_config
 from core import Segment
-from model_manager import WhisperModelManager
+from model_manager import WhisperModelProvider
 
 
 class TestFasterWhisperBug:
@@ -14,19 +14,19 @@ class TestFasterWhisperBug:
     )
     def test_transcribe_compare_with_faster_whisper(self):
         # given
-        model_name = "large-v3"
+        model_name = faster_whisper_config.default_model_name
         audio_file_name = "../assets/RecordedAudio.wav"
 
         model = WhisperModel(model_name)
-        model_manager = WhisperModelManager(WhisperModelConfig())
+        provider = WhisperModelProvider(WhisperModelConfig())
 
         # when
         segments_package, transcription_info_package = model.transcribe(audio_file_name)
 
-        with model_manager.load_model(model_name) as whisper:
-            segments_service, transcription_info_service = whisper.transcribe(
-                str(audio_file_name), temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-            )
+        whisper = provider.get()
+        segments_service, transcription_info_service = whisper.transcribe(
+            str(audio_file_name), temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        )
 
         text_package = segments_to_response(
             list(Segment.from_faster_whisper_segments(segments_package)),

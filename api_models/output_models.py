@@ -40,22 +40,10 @@ class ModelObject(BaseModel):
         json_schema_extra={
             "examples": [
                 {
-                    "id": "Systran/faster-whisper-large-v3",
-                    "created": 1700732060,
+                    "id": "large-v2",
+                    "created": 1668556800,
                     "object": "model",
                     "owned_by": "Systran",
-                },
-                {
-                    "id": "Systran/faster-distil-whisper-large-v3",
-                    "created": 1711378296,
-                    "object": "model",
-                    "owned_by": "Systran",
-                },
-                {
-                    "id": "bofenghuang/whisper-large-v2-cv11-french-ct2",
-                    "created": 1687968011,
-                    "object": "model",
-                    "owned_by": "bofenghuang",
                 },
             ]
         },

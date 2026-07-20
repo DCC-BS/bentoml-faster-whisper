@@ -116,8 +116,8 @@ def test_diarize_converts_mp3_to_wav(tmp_path):
     assert args[0] != str(audio_file)
 
 
-def test_diarization_segment_label_equals_speaker():
-    seg = DiarizationSegment(Segment(1.0, 2.0), label="SPEAKER_00", speaker="SPEAKER_00")
-    assert seg.label == seg.speaker
+def test_diarization_segment_exposes_speaker_and_bounds():
+    seg = DiarizationSegment(Segment(1.0, 2.0), speaker="SPEAKER_00")
+    assert seg.speaker == "SPEAKER_00"
     assert seg.start == pytest.approx(1.0)
     assert seg.end == pytest.approx(2.0)

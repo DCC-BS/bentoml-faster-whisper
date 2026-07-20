@@ -84,3 +84,29 @@ def test_explicit_language_disables_per_segment_detection(diarizing_handler):
 
     assert response["segments"], "explicit-language transcription must still produce segments"
     assert all(segment["language"] is None for segment in response["segments"])
+
+
+def test_lid_fallback_detects_one_language_over_all_speech(diarizing_handler, monkeypatch):
+    """When no turn is long enough for per-turn LID, the handler falls back to a single
+    detect_language() over the collapsed speech and tags every segment with that language.
+
+    This is the only path that consumes the full-file collapsed audio, so it guards the
+    collapse plumbing in prepare_audio_segments / _transcribe_language_runs end to end.
+    """
+    from handlers import fast_whipser_handler as handler_module
+
+    # Force every per-turn detection to be indeterminate so _transcribe_language_runs takes
+    # its detect_language(collapsed) fallback instead of the per-turn Viterbi path.
+    monkeypatch.setattr(handler_module, "detect_turn_language_probs", lambda *a, **k: [None, None])
+    monkeypatch.setattr(handler_module, "fill_missing_rows_from_intervals", lambda whisper, decoded, turns, rows: rows)
+
+    response = _transcribe(
+        diarizing_handler,
+        response_format=ResponseFormat.VERBOSE_JSON,
+        timestamp_granularities=["word"],
+    )
+
+    assert response["segments"], "fallback path must still produce segments"
+    # Audio is majority German (~23s) over English (~11s): one language detected for the whole file.
+    assert response["language"] == "de"
+    assert {s["language"] for s in response["segments"]} == {"de"}

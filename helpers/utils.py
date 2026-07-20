@@ -1,50 +1,37 @@
 import json
 import logging
+import os
 import subprocess
 from pathlib import Path
+from typing import Callable, TypeVar
 
-from prometheus_client import Histogram
+from helpers.logger import get_logger
 
 logger = logging.getLogger(__name__)
 
-AUDIO_INPUT_LENGTH_BUCKETS_S = [
-    10.0,
-    30.0,
-    60.0,
-    60.0 * 2,
-    60.0 * 5,
-    60.0 * 7,
-    60.0 * 10,
-    60.0 * 20,
-    60.0 * 30,
-    60.0 * 60,
-    60.0 * 60 * 2,
-    float("inf"),
-]
-REALTIME_FACTOR_BUCKETS = [
-    0.5,
-    1.0,
-    3.0,
-    5.0,
-    10.0,
-    20.0,
-    30.0,
-    40.0,
-    50.0,
-    float("inf"),
-]
+_NumberT = TypeVar("_NumberT", int, float)
 
-input_audio_length_histogram = Histogram(
-    name="input_audio_length_seconds",
-    documentation="Input audio length in seconds",
-    buckets=AUDIO_INPUT_LENGTH_BUCKETS_S,
-)
 
-realtime_factor_histogram = Histogram(
-    name="realtime_factor",
-    documentation="Realtime factor, e.g. avg. audio seconds transcribed per second",
-    buckets=REALTIME_FACTOR_BUCKETS,
-)
+def clamp(value: float, low: float, high: float) -> float:
+    """Constrain ``value`` to the closed interval ``[low, high]``."""
+    return min(max(value, low), high)
+
+
+def positive_env(name: str, default: _NumberT, cast: Callable[[str], _NumberT]) -> _NumberT:
+    """Parse a positive-number env var, falling back to default on missing/invalid/non-positive values."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    slog = get_logger(__name__)
+    try:
+        value = cast(raw)
+    except ValueError:
+        slog.warning("Invalid env var value; using default", name=name, raw=raw, default=default)
+        return default
+    if value <= 0:
+        slog.warning("Env var must be > 0; using default", name=name, value=value, default=default)
+        return default
+    return value
 
 
 def get_audio_duration(file: Path) -> float:

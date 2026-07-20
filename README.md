@@ -2,7 +2,49 @@
     <h1 align="center">Serving FasterWhisper with BentoML</h1>
 </div>
 
-[FasterWhisper](https://github.com/SYSTRAN/faster-whisper) provides fast automatic speech recognition with word-level timestamps.
+## What this service does
+
+This is a self-hosted speech-to-text API for audio and meeting recordings. Send it an audio
+file (any format FFmpeg can decode) and it returns an accurate transcript with word-level
+timestamps. On top of plain transcription it offers:
+
+- **Speaker diarization** — who spoke when. Every returned segment and word is labeled with a
+  speaker, so you get a readable "Speaker 1 / Speaker 2" transcript, not just a wall of text.
+  On by default; set `diarization=false` to skip it.
+- **Multi-language handling** — meetings where people switch languages (even mid-sentence) are
+  transcribed per speaker turn in the right language, instead of forcing one language over the
+  whole file.
+- **OpenAI-compatible endpoints** — it speaks the `/v1/audio/transcriptions` API, so existing
+  OpenAI SDK clients and tooling work against it with just a URL change.
+
+Response formats range from plain text to `verbose_json` and `json_diarized` (with per-segment
+language and speaker).
+
+### Models used
+
+| Purpose | Model |
+| --- | --- |
+| Transcription | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) `large-v2` (fast CTranslate2 Whisper) |
+| Speaker diarization | [pyannote](https://github.com/pyannote/pyannote-audio) `speaker-diarization-community-1` |
+| Voice activity (fallback) | Silero VAD, only when diarization is off |
+| Language identification | Whisper's own per-turn language detection |
+
+All models run locally — no data leaves your infrastructure. The Whisper model and (with an
+`HF_TOKEN`) the pyannote weights are baked into the Docker image, so the first request is fast.
+
+### Why `large-v2` (Swiss German benchmark)
+
+`large-v2` is our preferred transcription model for **Swiss German**. On our internal test
+bench we compared several ASR models (WER and CER lower is better, BLEU higher is better):
+
+![ASR evaluation: WER, CER and BLEU per model on the internal Swiss German test set](assets/asr_metrics_plot.png)
+
+`RedHatAI/Voxtral-Small-24B` scores nominally better on all three metrics, but we still prefer
+`faster-whisper-large-v2` because Voxtral is a **24B** model — far larger and much slower to
+serve — and it is an **LLM that rewrites/corrects grammar on the fly**, so its scores partly
+reflect that cleanup rather than faithful transcription. Among the practical, self-hostable
+speech models, `large-v2` is the strongest on Swiss German while staying fast enough for
+production.
 
 
 ## Prerequisites
@@ -52,7 +94,13 @@ with bentoml.SyncHTTPClient('http://localhost:3000') as client:
     print(response)
 ```
 
-Further examples (task, streaming) how to programmatically interact with the faster_whisper service can be found in `test_integration.py`
+Further examples (task, streaming) how to programmatically interact with the faster_whisper service can be found in `tests/integration/test_integration.py`
+
+#### Model
+
+This service serves a single Whisper model, `large-v2`. The `model` request field is kept for
+OpenAI-SDK compatibility but is validated: any value other than `large-v2` is rejected with a
+422. `GET /v1/models` and `GET /v1/models/large-v2` return that one model; any other name 404s.
 
 ### Speaker diarization
 
@@ -196,6 +244,30 @@ For custom deployment in your own infrastructure, you can build and containerize
 docker build -t faster_whisper:latest .
 ```
 
+#### Baked-in models
+
+The image pre-downloads the default models at build time (`tools/download_models.py`) so
+the first request needs no network round-trip. The whisper model (`large-v2` by default,
+override with `--build-arg DEFAULT_WHISPER_MODEL=...`) is always baked. The gated pyannote
+weights are baked only when `HF_TOKEN` is passed as a BuildKit secret — `make docker-build`
+wires this from the `HF_TOKEN` env var:
+```bash
+HF_TOKEN=hf_xxx make docker-build
+# or directly:
+DOCKER_BUILDKIT=1 docker build --secret id=hf_token,env=HF_TOKEN -t faster_whisper:latest .
+```
+Without the secret the build still succeeds, but pyannote downloads on the first diarized
+request instead. Note: `compose.yaml` mounts the `hugging_face_cache` named volume over the
+cache path; an empty volume is seeded from the baked cache on first `up`, but a volume that
+was already populated by an older image keeps its contents (remove it to pick up new bakes).
+
+#### Startup warmup
+
+Each worker loads the default Whisper model (pinned resident so the idle TTL never unloads
+it) and the pyannote pipeline into VRAM on startup, so the first request is fast. Set
+`WARMUP_ON_STARTUP=false` to restore the old lazy-on-first-request behaviour (e.g. a
+token-less dev box without cached weights).
+
 ### Run Container with NVIDIA GPU Support
 You can run the prebuilt docker image with NVIDIA GPU support using the following command:
 ```bash
@@ -247,6 +319,22 @@ Compatibility reference: [torchcodec version table](https://github.com/pytorch/t
 ## Observability
 
 BentoML automatically collects a set of default metrics for each Service and exposes them via '/metrics' endpoint.
+
+### Logging
+
+Logging uses [structlog](https://www.structlog.org/) with a single pipeline: structlog events
+and stdlib records (BentoML, uvicorn, our own modules) are all rendered by one root handler. Set
+`IS_PROD=true` for one JSON object per line on stdout; otherwise a Rich console renderer is used
+for development. `LOG_LEVEL` (default `INFO`) sets the level.
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `IS_PROD` | `false` | `true` emits structured single-line JSON; else a dev console renderer. |
+| `LOG_LEVEL` | `INFO` | Root log level (`DEBUG`, `INFO`, `WARNING`, …). |
+
+Client input errors (a bad `model` value, an unknown form field under `extra="forbid"`, …) are
+rejected with a 4xx: their log line is kept but the traceback is stripped, since they are not
+server faults. Only genuine 5xx errors carry a full stack.
 
 ### Prometheus (local)
 
