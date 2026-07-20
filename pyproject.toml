@@ -64,8 +64,23 @@ url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
 markers = [
     "integration: marks tests as integration tests (run with 'make integration')",
+    "unit: mark tests as unit tests.",
+    "model: mark tests that load a real Whisper model (slow, GPU-bound, run serially).",
+]
+filterwarnings = [
+    "ignore",
+    "default:::helpers.*",
+    "default:::core.*",
+    "default:::handlers.*",
+    "default:::service.*",
+    "default:::api_models.*",
+    "default:::tests.*",
+    "default:::config.*",
 ]
 
 [tool.ruff]

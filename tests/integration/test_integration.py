@@ -14,11 +14,12 @@ class TestIntegration:
         file = Path(__file__).resolve().parent.parent / "assets" / "example_audio.mp3"
 
         # when
-        response = requests.post(
-            "http://localhost:50001/v1/audio/transcriptions",
-            files={"file": open(file, "rb")},
-            data={"schmutzgeier": "schmutzgeier"},
-        )
+        with open(file, "rb") as f:
+            response = requests.post(
+                "http://localhost:50001/v1/audio/transcriptions",
+                files={"file": f},
+                data={"schmutzgeier": "schmutzgeier"},
+            )
 
         # Assert that the response status code is 401 because the parameter 'schmutzgeier' is invalid
         assert response.status_code == 400, response.text
