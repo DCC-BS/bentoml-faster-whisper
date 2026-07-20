@@ -54,8 +54,11 @@ _SPLIT_TOLERANCE_S = 0.1
 
 
 class _TimedSegment(Protocol):
-    start: float
-    end: float
+    @property
+    def start(self) -> float: ...
+
+    @property
+    def end(self) -> float: ...
 
 
 def diarization_to_speech_intervals(

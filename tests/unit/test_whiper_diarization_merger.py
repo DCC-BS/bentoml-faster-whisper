@@ -106,8 +106,7 @@ def test_diarization_segments_consumed_incrementally():
     # Reset counter for the full test
     consumed_count = 0
 
-    # Process all segments
-    result = list(merge_whipser_diarization(whisper_segments, segment_generator()))  # type: ignore
+    result = list(merge_whipser_diarization(whisper_segments, segment_generator()))
     # Should have consumed all 5 segments
     assert consumed_count == 5
 
