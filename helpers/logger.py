@@ -82,14 +82,15 @@ def _drop_color_message_key(logger: WrappedLogger, method_name: str, event_dict:
     return event_dict
 
 
-def _configure_library_loggers() -> None:
+def _configure_library_loggers(level: int) -> None:
     for name in _PIPELINE_LOGGERS:
         lib_logger = logging.getLogger(name)
         lib_logger.handlers.clear()
         lib_logger.propagate = True
+        lib_logger.setLevel(level)
 
     for name in _QUIET_LIBRARIES:
-        logging.getLogger(name).setLevel(logging.WARNING)
+        logging.getLogger(name).setLevel(max(level, logging.WARNING))
 
 
 def configure_logging() -> None:
@@ -155,6 +156,7 @@ def configure_logging() -> None:
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(ProcessorFormatter(processors=renderer_processors, foreign_pre_chain=foreign_pre_chain))
+    handler.setLevel(level)
 
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
@@ -164,7 +166,7 @@ def configure_logging() -> None:
     # Route Python warnings through the pipeline instead of raw stderr (JSON in prod too).
     logging.captureWarnings(True)
 
-    _configure_library_loggers()
+    _configure_library_loggers(level)
 
 
 def get_logger(name: str | None = None) -> BoundLogger:
