@@ -278,6 +278,22 @@ Compatibility reference: [torchcodec version table](https://github.com/pytorch/t
 
 BentoML automatically collects a set of default metrics for each Service and exposes them via '/metrics' endpoint.
 
+### Logging
+
+Logging uses [structlog](https://www.structlog.org/) with a single pipeline: structlog events
+and stdlib records (BentoML, uvicorn, our own modules) are all rendered by one root handler. Set
+`IS_PROD=true` for one JSON object per line on stdout; otherwise a Rich console renderer is used
+for development. `LOG_LEVEL` (default `INFO`) sets the level.
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `IS_PROD` | `false` | `true` emits structured single-line JSON; else a dev console renderer. |
+| `LOG_LEVEL` | `INFO` | Root log level (`DEBUG`, `INFO`, `WARNING`, …). |
+
+Client input errors (a bad `model` value, an unknown form field under `extra="forbid"`, …) are
+rejected with a 4xx: their log line is kept but the traceback is stripped, since they are not
+server faults. Only genuine 5xx errors carry a full stack.
+
 ### Prometheus (local)
 
 To run a prometheus server locally, you need to do the following:

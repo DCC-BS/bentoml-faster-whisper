@@ -18,6 +18,8 @@ services:
       - NO_PROXY
       - TIMEOUT
       - MAX_CONCURRENCY
+      - IS_PROD=true
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - HF_TOKEN=${HF_TOKEN}
     volumes:
       - hugging_face_cache:/home/app/.cache/huggingface

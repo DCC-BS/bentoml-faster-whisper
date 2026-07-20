@@ -8,9 +8,12 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, cast
 
 import pyannote.audio as _pyannote_audio
 import torch
-from loguru import logger
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
+
+from helpers.logger import get_logger, log_exceptions
+
+logger = get_logger(__name__)
 
 # Ordered weights for the pyannote speaker-diarization steps (they fire in this order). "embeddings"
 # is the heavy GPU step that reports granular completed/total, so it gets the bulk of the band.
@@ -97,7 +100,7 @@ def _as_wav(audio_path: str) -> Iterator[str]:
                 capture_output=True,
             )
         except subprocess.CalledProcessError as e:
-            logger.error("ffmpeg conversion failed: {}", e.stderr.decode(errors="replace"))
+            logger.error("ffmpeg conversion failed", stderr=e.stderr.decode(errors="replace"))
             raise
         yield tmp_path
     finally:
@@ -112,10 +115,10 @@ def _positive_int_env(name: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError:
-        logger.warning("Invalid value for %s: %r; using default %d", name, raw, default)
+        logger.warning("Invalid env var value; using default", name=name, raw=raw, default=default)
         return default
     if value < 1:
-        logger.warning("%s must be >= 1, got %d; using default %d", name, value, default)
+        logger.warning("Env var must be >= 1; using default", name=name, value=value, default=default)
         return default
     return value
 
@@ -133,7 +136,7 @@ class DiarizationService:
         self._segmentation_batch_size = _positive_int_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 4)
         self._embedding_batch_size = _positive_int_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 4)
 
-    @logger.catch(reraise=True)
+    @log_exceptions
     def load(self):
         """
         Load the speaker diarization pipeline from the Hugging Face model hub.
@@ -154,15 +157,15 @@ class DiarizationService:
                 raise RuntimeError("Failed to load diarization pipeline")
 
             _version = getattr(_pyannote_audio, "__version__", "unknown")
-            logger.info("pyannote.audio version: {}", _version)
+            logger.info("pyannote.audio loaded", version=_version)
             try:
                 pipeline._models.segmentation_batch_size = self._segmentation_batch_size  # type: ignore
                 pipeline._models.embedding_batch_size = self._embedding_batch_size  # type: ignore
             except AttributeError:
                 logger.warning(
-                    "pipeline._models batch-size attributes not found (pyannote.audio {}); "
-                    "private API may have changed — batch sizes not configured",
-                    _version,
+                    "pipeline._models batch-size attributes not found; private API may have "
+                    "changed — batch sizes not configured",
+                    version=_version,
                 )
 
             if torch.cuda.is_available():
@@ -170,7 +173,7 @@ class DiarizationService:
 
             self.pipeline = pipeline
 
-    @logger.catch(reraise=True)
+    @log_exceptions
     def diarize(
         self,
         audio_path: str,

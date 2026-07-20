@@ -6,9 +6,11 @@ from typing import Iterable, Protocol
 import numpy as np
 from faster_whisper.audio import decode_audio
 from faster_whisper.transcribe import restore_speech_timestamps
-from loguru import logger
 
 from core import Segment, Word
+from helpers.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Whisper models operate on 16 kHz mono audio; speech chunks are expressed in samples at this rate.
 WHISPER_SAMPLE_RATE = 16000
@@ -27,10 +29,10 @@ def _positive_float_env(name: str, default: float) -> float:
     try:
         value = float(raw)
     except ValueError:
-        logger.warning("Invalid value for {}: {!r}; using default {}", name, raw, default)
+        logger.warning("Invalid env var value; using default", name=name, raw=raw, default=default)
         return default
     if value <= 0:
-        logger.warning("{} must be > 0, got {}; using default {}", name, value, default)
+        logger.warning("Env var must be > 0; using default", name=name, value=value, default=default)
         return default
     return value
 
