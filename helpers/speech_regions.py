@@ -7,7 +7,7 @@ from faster_whisper.transcribe import restore_speech_timestamps
 
 from core import Segment, Word
 from helpers.logger import get_logger
-from helpers.utils import positive_env
+from helpers.utils import clamp, positive_env
 
 logger = get_logger(__name__)
 
@@ -258,8 +258,8 @@ def restore_and_split_segments(
 
     next_id = 0
     for seg in core_segments:
-        seg.start = _clamp(seg.start, 0.0, original_duration_s)
-        seg.end = _clamp(seg.end, 0.0, original_duration_s)
+        seg.start = clamp(seg.start, 0.0, original_duration_s)
+        seg.end = clamp(seg.end, 0.0, original_duration_s)
 
         if not seg.words:
             seg.id = next_id
@@ -268,17 +268,13 @@ def restore_and_split_segments(
             continue
 
         for word in seg.words:
-            word.start = _clamp(word.start, 0.0, original_duration_s)
-            word.end = _clamp(word.end, 0.0, original_duration_s)
+            word.start = clamp(word.start, 0.0, original_duration_s)
+            word.end = clamp(word.end, 0.0, original_duration_s)
 
         for piece in _split_segment_by_intervals(seg, intervals):
             piece.id = next_id
             next_id += 1
             yield piece
-
-
-def _clamp(value: float, low: float, high: float) -> float:
-    return min(max(value, low), high)
 
 
 def _interval_index(intervals: list[tuple[float, float]], midpoint: float) -> int | None:

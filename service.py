@@ -186,8 +186,7 @@ class FasterWhisper:
     def translate(self, **params: Any) -> WhisperResponse:
         request = TranslationRequest.from_dict(params)
         self._configure_vad_options(request)
-        result = self.handler.translate_audio(**params)
-        return result
+        return self.handler.translate_audio(request)
 
     @fastapi.get("/progress/{progress_id}")
     def get_progress(self, progress_id: str) -> ProgressResponse:

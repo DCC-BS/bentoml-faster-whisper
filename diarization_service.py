@@ -12,7 +12,7 @@ from pyannote.audio import Pipeline
 from pyannote.core import Segment
 
 from helpers.logger import get_logger, log_exceptions
-from helpers.utils import positive_env
+from helpers.utils import clamp, positive_env
 
 logger = get_logger(__name__)
 
@@ -58,7 +58,7 @@ class _DiarizationProgressHook:
         if weight is None:
             return  # unknown step: leave the bar where it is
         within = (completed / total) if (total and completed is not None) else 1.0
-        within = min(max(within, 0.0), 1.0)
+        within = clamp(within, 0.0, 1.0)
         fraction = min(self._base[step_name] + weight * within, 1.0)
         if fraction <= self._last:
             return  # pyannote emits completed=0 first; never move backwards

@@ -32,10 +32,6 @@ _QUIET_LIBRARIES = ("httpx", "httpcore", "urllib3", "huggingface_hub", "filelock
 # records flow through the single root pipeline instead of being double-formatted.
 _PIPELINE_LOGGERS = ("bentoml", "uvicorn", "uvicorn.error", "uvicorn.asgi", "circus")
 
-# BentoML logs every request-handling exception here at ERROR with a full traceback,
-# including client input errors that already return a 4xx.
-_HTTP_APP_LOGGER = "bentoml._internal.server.http_app"
-
 
 def _exception_info(exc_info: object) -> tuple[type[BaseException] | None, BaseException | None]:
     if exc_info is True:
@@ -109,7 +105,7 @@ class ClientErrorFilter(logging.Filter):
                         errors = exc_value.errors()
                         error_details = []
                         for err in errors:
-                            loc = ".".join(str(l) for l in err.get("loc", []))
+                            loc = ".".join(str(part) for part in err.get("loc", []))
                             msg = err.get("msg", "invalid value")
                             error_details.append(f"{loc}: {msg}")
                         error_msg = f"Validation Error (400): {'; '.join(error_details)}"

@@ -16,7 +16,9 @@ from api_models.output_models import (
     WhisperResponse,
     segments_to_response,
 )
+from api_models.decode_params import DecodeParams
 from api_models.TranscriptionRequest import TranscriptionRequest
+from api_models.TranslationRequest import TranslationRequest
 from config import WhisperModelConfig
 from core import Segment
 from diarization_service import DiarizationSegment, DiarizationService
@@ -104,52 +106,21 @@ class FasterWhisperHandler:
             # Release the held model ref even if cleaning or response building raises midway.
             segments.close()
 
-    def translate_audio(
-        self,
-        file,
-        model,  # accepted for OpenAI-SDK compatibility; validated to the served model, then ignored.
-        prompt,
-        response_format,
-        temperature,
-        best_of,
-        vad_filter,
-        vad_parameters,
-        condition_on_previous_text,
-        repetition_penalty,
-        length_penalty,
-        no_repeat_ngram_size,
-        hotwords,
-        beam_size,
-        patience,
-        compression_ratio_threshold,
-        log_prob_threshold,
-        prompt_reset_on_temperature,
-    ):
+    def translate_audio(self, request: TranslationRequest) -> WhisperResponse:
         t0 = time.perf_counter()
         whisper = self.model_manager.get()
+        word_timestamps = request.response_format == ResponseFormat.VERBOSE_JSON
+        decode_options = self._decode_options(request, word_timestamps)
         try:
             segments, transcription_info = whisper.transcribe(
-                file,
+                str(request.file),
                 task=Task.TRANSLATE,
-                initial_prompt=prompt,
-                temperature=temperature,
-                word_timestamps=response_format == ResponseFormat.VERBOSE_JSON,
-                best_of=best_of,
-                hotwords=hotwords,
-                vad_filter=vad_filter,
-                vad_parameters=vad_parameters,
-                condition_on_previous_text=condition_on_previous_text,
-                beam_size=beam_size,
-                patience=patience,
-                repetition_penalty=repetition_penalty,
-                length_penalty=length_penalty,
-                no_repeat_ngram_size=no_repeat_ngram_size,
-                compression_ratio_threshold=compression_ratio_threshold,
-                log_prob_threshold=log_prob_threshold,
-                prompt_reset_on_temperature=prompt_reset_on_temperature,
+                vad_filter=request.vad_filter,
+                vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
+                **decode_options,
             )
             segments = Segment.from_faster_whisper_segments(segments)
-            response = segments_to_response(segments, transcription_info, response_format)
+            response = segments_to_response(segments, transcription_info, request.response_format)
         except Exception as e:
             metrics.record_failure("decode", e)
             raise
@@ -275,7 +246,7 @@ class FasterWhisperHandler:
         return _held_segments(), transcription_info
 
     @staticmethod
-    def _decode_options(request: TranscriptionRequest, word_timestamps: bool) -> dict:
+    def _decode_options(request: DecodeParams, word_timestamps: bool) -> dict:
         """The transcribe() options shared by every decode of this request; language
         and VAD arguments differ per pipeline path, so they are not included."""
         return dict(

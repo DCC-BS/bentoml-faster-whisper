@@ -12,6 +12,11 @@ logger = logging.getLogger(__name__)
 _NumberT = TypeVar("_NumberT", int, float)
 
 
+def clamp(value: float, low: float, high: float) -> float:
+    """Constrain ``value`` to the closed interval ``[low, high]``."""
+    return min(max(value, low), high)
+
+
 def positive_env(name: str, default: _NumberT, cast: Callable[[str], _NumberT]) -> _NumberT:
     """Parse a positive-number env var, falling back to default on missing/invalid/non-positive values."""
     raw = os.getenv(name)
