@@ -27,7 +27,6 @@ from core import Segment
 from handlers.fast_whipser_handler import FasterWhisperHandler
 from handlers.progress_handler import ProgressHandler
 from helpers.logger import configure_logging
-from helpers.timing import measure_processing_time
 from helpers.transcription_cleaner import clean_transcription_segments
 
 if TYPE_CHECKING:
@@ -45,6 +44,9 @@ TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", 4))
 MAX_LATENCY_MS = int(os.getenv("MAX_LATENCY_MS", 60 * 1000))
+# Load models into VRAM at worker startup instead of lazily on first request. Set to
+# "false" to keep the old lazy behaviour (e.g. token-less dev without cached weights).
+WARMUP_ON_STARTUP = os.getenv("WARMUP_ON_STARTUP", "true").lower() not in ("false", "0", "no")
 DURATION_BUCKETS_S = [
     1.0,
     5.0,
@@ -66,6 +68,15 @@ DURATION_BUCKETS_S = [
 class BatchFasterWhisper:
     def __init__(self):
         self.handler = FasterWhisperHandler()
+
+    @bentoml.on_startup
+    def warmup(self):
+        if WARMUP_ON_STARTUP:
+            self.handler.warmup()
+
+    @bentoml.on_shutdown
+    def release(self):
+        self.handler.release()
 
     @bentoml.api(batchable=True, max_batch_size=MAX_BATCH_SIZE, max_latency_ms=MAX_LATENCY_MS)
     async def batch_transcribe(self, requests: list[TranscriptionRequest]) -> list[WhisperResponse]:
@@ -95,8 +106,18 @@ class FasterWhisper:
         self.handler = FasterWhisperHandler()
         self.progress_handler = ProgressHandler()
 
+    @bentoml.on_startup
+    def warmup(self):
+        # Runs once per worker: load the default Whisper model (pinned resident) and the
+        # pyannote pipeline into VRAM so the first request doesn't pay the load cost.
+        if WARMUP_ON_STARTUP:
+            self.handler.warmup()
+
+    @bentoml.on_shutdown
+    def release(self):
+        self.handler.release()
+
     @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)  # type: ignore
-    @measure_processing_time
     def transcribe(self, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
@@ -167,7 +188,6 @@ class FasterWhisper:
                 self.progress_handler.remove_progress(request.progress_id)
 
     @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)  # type: ignore
-    @measure_processing_time
     def streaming_transcribe(self, **params: Any) -> Generator[str, None, None]:
         request = TranscriptionRequest.from_dict(params)
 
@@ -184,7 +204,6 @@ class FasterWhisper:
             segments.close()
 
     @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)  # type: ignore
-    @measure_processing_time
     def translate(self, **params: Any) -> WhisperResponse:
         request = TranslationRequest.from_dict(params)
         self._configure_vad_options(request)

@@ -10,6 +10,7 @@ from collections.abc import Callable
 from faster_whisper import WhisperModel
 
 from config import WhisperModelConfig
+from helpers import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ class SelfDisposingModel[T]:
             self.model = None
             # WARN: ~300 MB of memory will still be held by the model. See https://github.com/SYSTRAN/faster-whisper/issues/992
             gc.collect()
+            metrics.model_unloads_total().inc()
+            metrics.models_loaded().dec()
             logger.info(f"Model {self.model_id} unloaded")
             if self.unload_fn is not None:
                 self.unload_fn(self.model_id)
@@ -53,7 +56,11 @@ class SelfDisposingModel[T]:
             logger.debug(f"Loading model {self.model_id}")
             start = time.perf_counter()
             self.model = self.load_fn()
-            logger.info(f"Model {self.model_id} loaded in {time.perf_counter() - start:.2f}s")
+            load_duration = time.perf_counter() - start
+            metrics.model_load_duration().observe(load_duration)
+            metrics.model_loads_total().inc()
+            metrics.models_loaded().inc()
+            logger.info(f"Model {self.model_id} loaded in {load_duration:.2f}s")
 
     def _increment_ref(self) -> None:
         with self.rlock:

@@ -196,6 +196,30 @@ For custom deployment in your own infrastructure, you can build and containerize
 docker build -t faster_whisper:latest .
 ```
 
+#### Baked-in models
+
+The image pre-downloads the default models at build time (`tools/download_models.py`) so
+the first request needs no network round-trip. The whisper model (`large-v2` by default,
+override with `--build-arg DEFAULT_WHISPER_MODEL=...`) is always baked. The gated pyannote
+weights are baked only when `HF_TOKEN` is passed as a BuildKit secret — `make docker-build`
+wires this from the `HF_TOKEN` env var:
+```bash
+HF_TOKEN=hf_xxx make docker-build
+# or directly:
+DOCKER_BUILDKIT=1 docker build --secret id=hf_token,env=HF_TOKEN -t faster_whisper:latest .
+```
+Without the secret the build still succeeds, but pyannote downloads on the first diarized
+request instead. Note: `compose.yaml` mounts the `hugging_face_cache` named volume over the
+cache path; an empty volume is seeded from the baked cache on first `up`, but a volume that
+was already populated by an older image keeps its contents (remove it to pick up new bakes).
+
+#### Startup warmup
+
+Each worker loads the default Whisper model (pinned resident so the idle TTL never unloads
+it) and the pyannote pipeline into VRAM on startup, so the first request is fast. Set
+`WARMUP_ON_STARTUP=false` to restore the old lazy-on-first-request behaviour (e.g. a
+token-less dev box without cached weights).
+
 ### Run Container with NVIDIA GPU Support
 You can run the prebuilt docker image with NVIDIA GPU support using the following command:
 ```bash

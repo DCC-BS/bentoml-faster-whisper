@@ -34,10 +34,11 @@ integration: ## Run integration tests (requires a running service)
 	@uv run --env-file .env python -m pytest -m integration
 
 .PHONY: docker-build
-docker-build: ## Build and tag the Docker image for quay.io/ktbs/fd-itbs/faster-whisper
+docker-build: ## Build and tag the Docker image (set HF_TOKEN to bake the gated pyannote weights)
 	$(eval VERSION := $(shell uv version --short))
 	@echo "🐳 Building Docker image faster-whisper:v$(VERSION)"
-	@docker build -t quay.io/ktbs/fd-itbs/faster-whisper:v$(VERSION) .
+	@DOCKER_BUILDKIT=1 docker build --secret id=hf_token,env=HF_TOKEN \
+		-t quay.io/ktbs/fd-itbs/faster-whisper:v$(VERSION) .
 
 .PHONY: docker-push
 docker-push: ## Push the Docker image to quay.io/ktbs/fd-itbs/faster-whisper
