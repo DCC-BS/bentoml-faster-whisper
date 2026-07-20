@@ -2,7 +2,49 @@
     <h1 align="center">Serving FasterWhisper with BentoML</h1>
 </div>
 
-[FasterWhisper](https://github.com/SYSTRAN/faster-whisper) provides fast automatic speech recognition with word-level timestamps.
+## What this service does
+
+This is a self-hosted speech-to-text API for audio and meeting recordings. Send it an audio
+file (any format FFmpeg can decode) and it returns an accurate transcript with word-level
+timestamps. On top of plain transcription it offers:
+
+- **Speaker diarization** — who spoke when. Every returned segment and word is labeled with a
+  speaker, so you get a readable "Speaker 1 / Speaker 2" transcript, not just a wall of text.
+  On by default; set `diarization=false` to skip it.
+- **Multi-language handling** — meetings where people switch languages (even mid-sentence) are
+  transcribed per speaker turn in the right language, instead of forcing one language over the
+  whole file.
+- **OpenAI-compatible endpoints** — it speaks the `/v1/audio/transcriptions` API, so existing
+  OpenAI SDK clients and tooling work against it with just a URL change.
+
+Response formats range from plain text to `verbose_json` and `json_diarized` (with per-segment
+language and speaker).
+
+### Models used
+
+| Purpose | Model |
+| --- | --- |
+| Transcription | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) `large-v2` (fast CTranslate2 Whisper) |
+| Speaker diarization | [pyannote](https://github.com/pyannote/pyannote-audio) `speaker-diarization-community-1` |
+| Voice activity (fallback) | Silero VAD, only when diarization is off |
+| Language identification | Whisper's own per-turn language detection |
+
+All models run locally — no data leaves your infrastructure. The Whisper model and (with an
+`HF_TOKEN`) the pyannote weights are baked into the Docker image, so the first request is fast.
+
+### Why `large-v2` (Swiss German benchmark)
+
+`large-v2` is our preferred transcription model for **Swiss German**. On our internal test
+bench we compared several ASR models (WER and CER lower is better, BLEU higher is better):
+
+![ASR evaluation: WER, CER and BLEU per model on the internal Swiss German test set](assets/asr_metrics_plot.png)
+
+`RedHatAI/Voxtral-Small-24B` scores nominally better on all three metrics, but we still prefer
+`faster-whisper-large-v2` because Voxtral is a **24B** model — far larger and much slower to
+serve — and it is an **LLM that rewrites/corrects grammar on the fly**, so its scores partly
+reflect that cleanup rather than faithful transcription. Among the practical, self-hostable
+speech models, `large-v2` is the strongest on Swiss German while staying fast enough for
+production.
 
 
 ## Prerequisites
@@ -52,7 +94,7 @@ with bentoml.SyncHTTPClient('http://localhost:3000') as client:
     print(response)
 ```
 
-Further examples (task, streaming) how to programmatically interact with the faster_whisper service can be found in `test_integration.py`
+Further examples (task, streaming) how to programmatically interact with the faster_whisper service can be found in `tests/integration/test_integration.py`
 
 #### Model
 
