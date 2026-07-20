@@ -61,8 +61,9 @@ def _is_client_error(exc_type: type[BaseException], exc_value: BaseException | N
             return status_code < 500
         return True
     if issubclass(exc_type, BentoMLException):
+        source = exc_value if exc_value is not None else exc_type
         try:
-            return exc_type.error_code.value < 500
+            return source.error_code.value < 500
         except Exception:
             return False
     return False
@@ -125,8 +126,9 @@ class ClientErrorFilter(logging.Filter):
                 except Exception as e:
                     error_msg = f"Client Error parsing failed: {e}"
 
-                record.msg = f"{record.msg} - {error_msg}" if error_msg else record.msg
-                record.args = ()
+                if error_msg:
+                    record.msg = f"{record.getMessage()} - {error_msg}"
+                    record.args = ()
                 record.exc_info = None
 
         return True

@@ -81,11 +81,12 @@ def segments_to_text(segments: Iterable[Segment]) -> str:
 
 
 def _format_timestamp(ts: float, millis_sep: str) -> str:
-    hours = ts // 3600
-    minutes = (ts % 3600) // 60
-    seconds = ts % 60
-    milliseconds = (ts * 1000) % 1000
-    return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}{millis_sep}{int(milliseconds):03d}"
+    total_ms = round(ts * 1000)
+    hours = total_ms // 3_600_000
+    minutes = (total_ms // 60_000) % 60
+    seconds = (total_ms // 1000) % 60
+    milliseconds = total_ms % 1000
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}{millis_sep}{milliseconds:03d}"
 
 
 def srt_format_timestamp(ts: float) -> str:

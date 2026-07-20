@@ -19,6 +19,7 @@ class TestIntegration:
                 "http://localhost:50001/v1/audio/transcriptions",
                 files={"file": f},
                 data={"schmutzgeier": "schmutzgeier"},
+                timeout=30,
             )
 
         # Assert that the response status code is 401 because the parameter 'schmutzgeier' is invalid
