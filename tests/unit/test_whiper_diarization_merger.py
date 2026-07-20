@@ -28,8 +28,8 @@ def test_merge_whipser_diarization():
         DummyWhisperSegment(start=6, end=10, words=[]),
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 5), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(6, 10), speaker="B", label="B"),
+        DiarizationSegment(segment=Segment(0, 5), speaker="A"),
+        DiarizationSegment(segment=Segment(6, 10), speaker="B"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -48,8 +48,8 @@ def test_merge_whipser_diarization_with_words():
         ),
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 5), label="label1", speaker="A"),
-        DiarizationSegment(segment=Segment(6, 10), label="label2", speaker="B"),
+        DiarizationSegment(segment=Segment(0, 5), speaker="A"),
+        DiarizationSegment(segment=Segment(6, 10), speaker="B"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -74,11 +74,11 @@ def test_diarization_segments_consumed_incrementally():
 
     # Create diarization segments with some gaps
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 3), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(3, 5), speaker="B", label="B"),
-        DiarizationSegment(segment=Segment(6, 8), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(8, 10), speaker="B", label="B"),
-        DiarizationSegment(segment=Segment(12, 15), speaker="C", label="C"),
+        DiarizationSegment(segment=Segment(0, 3), speaker="A"),
+        DiarizationSegment(segment=Segment(3, 5), speaker="B"),
+        DiarizationSegment(segment=Segment(6, 8), speaker="A"),
+        DiarizationSegment(segment=Segment(8, 10), speaker="B"),
+        DiarizationSegment(segment=Segment(12, 15), speaker="C"),
     ]
 
     # Use a generator with a counter to track consumption
@@ -127,8 +127,8 @@ def test_segment_spanning_speaker_change_is_split():
         )
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 5), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(5, 10), speaker="B", label="B"),
+        DiarizationSegment(segment=Segment(0, 5), speaker="A"),
+        DiarizationSegment(segment=Segment(5, 10), speaker="B"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -157,9 +157,9 @@ def test_fast_exchange_splits_into_alternating_speakers():
         )
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 2), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(2, 4), speaker="B", label="B"),
-        DiarizationSegment(segment=Segment(4, 6), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(0, 2), speaker="A"),
+        DiarizationSegment(segment=Segment(2, 4), speaker="B"),
+        DiarizationSegment(segment=Segment(4, 6), speaker="A"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -184,8 +184,8 @@ def test_border_word_straddling_turn_boundary_does_not_split():
         )
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(110.3, 110.9), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(110.9, 111.4), speaker="B", label="B"),
+        DiarizationSegment(segment=Segment(110.3, 110.9), speaker="A"),
+        DiarizationSegment(segment=Segment(110.9, 111.4), speaker="B"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -209,8 +209,8 @@ def test_words_without_speaker_do_not_split_segment():
         )
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 2), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(4, 6), speaker="A", label="A"),
+        DiarizationSegment(segment=Segment(0, 2), speaker="A"),
+        DiarizationSegment(segment=Segment(4, 6), speaker="A"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -225,7 +225,7 @@ def test_segment_in_pre_pad_snaps_to_upcoming_turn():
     # Turn A starts at 1.0; decode window padding places a segment in [0.7, 0.95],
     # which has zero overlap with A but is only 0.05s away.
     whisper_segments = [DummyWhisperSegment(start=0.7, end=0.95, words=[])]
-    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A", label="A")]
+    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A")]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
@@ -236,7 +236,7 @@ def test_segment_in_post_pad_snaps_to_previous_turn():
     """A segment entirely in the post-pad (after the turn ends) snaps to that turn."""
     # Turn A ends at 5.0; segment sits in [5.05, 5.25], 0.05s after A, no overlap.
     whisper_segments = [DummyWhisperSegment(start=5.05, end=5.25, words=[])]
-    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A", label="A")]
+    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A")]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
@@ -248,8 +248,8 @@ def test_segment_between_two_turns_snaps_to_closer():
     # A ends at 1.0, B starts at 1.4. Segment [1.1, 1.15]: 0.1s from A, 0.25s from B.
     whisper_segments = [DummyWhisperSegment(start=1.1, end=1.15, words=[])]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(1.4, 3), speaker="B", label="B"),
+        DiarizationSegment(segment=Segment(0, 1), speaker="A"),
+        DiarizationSegment(segment=Segment(1.4, 3), speaker="B"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -261,7 +261,7 @@ def test_segment_far_from_any_turn_stays_none():
     """A segment farther than SPEECH_PAD_S from any turn keeps speaker=None."""
     # Turn A ends at 1.0; segment at [2.0, 2.1] is 1.0s away — beyond the 0.3s pad.
     whisper_segments = [DummyWhisperSegment(start=2.0, end=2.1, words=[])]
-    diarization_segments = [DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A")]
+    diarization_segments = [DiarizationSegment(segment=Segment(0, 1), speaker="A")]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
@@ -283,7 +283,7 @@ def test_words_in_pad_regions_snap_to_turn():
             ],
         )
     ]
-    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A", label="A")]
+    diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A")]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
 
@@ -310,8 +310,8 @@ def test_word_between_two_turns_snaps_to_closer():
         )
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(1.4, 5), speaker="B", label="B"),
+        DiarizationSegment(segment=Segment(0, 1), speaker="A"),
+        DiarizationSegment(segment=Segment(1.4, 5), speaker="B"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore
@@ -337,8 +337,8 @@ def test_word_far_from_any_turn_stays_none():
         )
     ]
     diarization_segments = [
-        DiarizationSegment(segment=Segment(0, 1), speaker="A", label="A"),
-        DiarizationSegment(segment=Segment(4, 5), speaker="B", label="B"),
+        DiarizationSegment(segment=Segment(0, 1), speaker="A"),
+        DiarizationSegment(segment=Segment(4, 5), speaker="B"),
     ]
 
     result = list(merge_whipser_diarization(whisper_segments, diarization_segments))  # type: ignore

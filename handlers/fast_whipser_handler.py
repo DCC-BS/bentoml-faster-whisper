@@ -8,15 +8,12 @@ from faster_whisper import WhisperModel
 from faster_whisper.audio import decode_audio
 from faster_whisper.vad import VadOptions
 
+from api_models.decode_params import DecodeParams
 from api_models.enums import ResponseFormat, Task
-from api_models.input_models import (
-    validate_timestamp_granularities,
-)
 from api_models.output_models import (
     WhisperResponse,
     segments_to_response,
 )
-from api_models.decode_params import DecodeParams
 from api_models.TranscriptionRequest import TranscriptionRequest
 from api_models.TranslationRequest import TranslationRequest
 from config import WhisperModelConfig
@@ -34,6 +31,7 @@ from helpers.speech_regions import (
     collapse_decoded_to_speech,
     diarization_to_speech_intervals,
     restore_and_split_segments,
+    speech_intervals_to_chunks,
     turns_to_language_runs,
 )
 from helpers.transcription_cleaner import clean_transcription_segments
@@ -92,12 +90,9 @@ class FasterWhisperHandler:
         self,
         request: TranscriptionRequest,
     ) -> WhisperResponse:
-        validate_timestamp_granularities(
-            request.response_format,
-            request.timestamp_granularities,
-            request.diarization,
-        )
-
+        # Request validation (timestamp granularities, diarization/response-format coupling)
+        # lives at the API boundary in service.py::_prepare_transcribe; internal callers are
+        # trusted to pass an already-validated request.
         segments, transcription_info = self.prepare_audio_segments(request)
         try:
             cleaned = clean_transcription_segments(segments, transcription_info)
@@ -171,12 +166,15 @@ class FasterWhisperHandler:
         word_timestamps = ("word" in request.timestamp_granularities) or bool(dia_segments)
 
         decoded: np.ndarray | None = None
-        collapsed: tuple[np.ndarray, list[dict]] | None = None
+        has_speech = False
         original_duration_s = 0.0
         if intervals:
             decoded = decode_audio(str(request.file), sampling_rate=WHISPER_SAMPLE_RATE)
             original_duration_s = decoded.shape[0] / WHISPER_SAMPLE_RATE
-            collapsed = collapse_decoded_to_speech(decoded, intervals)
+            # Only check that decodable speech exists — the full-file concatenate is deferred to
+            # the per-run decode paths (which re-collapse per run) and the rare LID fallback, so a
+            # long meeting never pays a whole-file np.concatenate that nothing downstream consumes.
+            has_speech = bool(speech_intervals_to_chunks(intervals, decoded.shape[0], WHISPER_SAMPLE_RATE))
 
         # The single served model is resident and never unloaded, so the lazy transcribe()
         # generator can safely outlive this method with no ref guard. request.model is already
@@ -184,12 +182,12 @@ class FasterWhisperHandler:
         whisper = self.model_manager.get()
         try:
             decode_options = self._decode_options(request, word_timestamps)
-            if collapsed is not None:
+            if has_speech:
                 # Decode the collapsed speech as bounded runs cut at turn boundaries, never as one
                 # block: a long continuous stretch handed to a single whisper.transcribe() makes its
                 # long-form decode drift and drop whole windows. The single-language and the per-turn
                 # language-detection paths share the same run machinery.
-                assert decoded is not None  # collapsed is derived from decoded
+                assert decoded is not None  # has_speech is only set once decoded exists
                 turns = sorted((max(t.start, 0.0), t.end) for t in dia_segments if t.end > t.start)
                 if request.language is None:
                     # No language given: detect it per speaker turn so multilingual audio
@@ -198,7 +196,7 @@ class FasterWhisperHandler:
                     segments, transcription_info = self._transcribe_language_runs(
                         whisper,
                         decoded,
-                        collapsed,
+                        intervals,
                         turns,
                         original_duration_s,
                         decode_options,
@@ -270,7 +268,7 @@ class FasterWhisperHandler:
         self,
         whisper: WhisperModel,
         decoded: np.ndarray,
-        collapsed: tuple[np.ndarray, list[dict]],
+        intervals: list[tuple[float, float]],
         turns: list[tuple[float, float]],
         original_duration_s: float,
         decode_options: dict,
@@ -290,8 +288,11 @@ class FasterWhisperHandler:
             inventory = resolve_language_inventory(prob_rows, durations, language_candidates)
             resolved = viterbi_smooth_languages(prob_rows, durations, inventory)
         else:
-            # No turn long enough to detect on: detect once on all collapsed
-            # speech, like the single-language path would.
+            # No turn long enough to detect on: collapse all speech now (deferred from the
+            # caller so the common per-turn path never pays the full-file concatenate) and
+            # detect once, like the single-language path would.
+            collapsed = collapse_decoded_to_speech(decoded, intervals)
+            assert collapsed is not None  # caller only takes this path when speech exists
             language, _, _ = whisper.detect_language(audio=collapsed[0])
             resolved = [language] * len(turns)
 

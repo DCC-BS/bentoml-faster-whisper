@@ -47,7 +47,7 @@ MAX_ALLOWED_GAP_S = 4.0
 
 def _replay_turns() -> list[DiarizationSegment]:
     raw = json.loads(TURNS.read_text())
-    return [DiarizationSegment(PyannoteSegment(start, end), speaker, speaker) for start, end, speaker in raw]
+    return [DiarizationSegment(PyannoteSegment(start, end), speaker) for start, end, speaker in raw]
 
 
 @pytest.fixture(scope="module")

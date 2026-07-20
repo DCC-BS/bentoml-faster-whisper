@@ -67,17 +67,14 @@ class _DiarizationProgressHook:
 
 
 class DiarizationSegment:
-    def __init__(self, segment: Segment, label: str, speaker: str):
+    def __init__(self, segment: Segment, speaker: str):
         self.segment = segment
-        self.label = label
         self.speaker = speaker
         self.start = segment.start
         self.end = segment.end
 
     def __str__(self):
-        return (
-            f"Segment: {self.segment}, Label: {self.label}, Speaker: {self.speaker}, Time: [{self.start} - {self.end}]"
-        )
+        return f"Segment: {self.segment}, Speaker: {self.speaker}, Time: [{self.start} - {self.end}]"
 
     def __repr__(self):
         return self.__str__()
@@ -203,4 +200,4 @@ class DiarizationService:
         # pyannote types __call__ loosely; the speaker-diarization pipeline returns an
         # object carrying `speaker_diarization`, which the static union can't express.
         for turn, speaker in cast(Any, output).speaker_diarization:
-            yield DiarizationSegment(turn, speaker, speaker)
+            yield DiarizationSegment(turn, speaker)
