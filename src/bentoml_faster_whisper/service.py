@@ -4,7 +4,6 @@ from collections.abc import Generator
 from typing import Annotated, Any
 
 import bentoml
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as FastAPIPath
 
@@ -34,8 +33,8 @@ fastapi = FastAPI()
 
 configure_logging()
 
-load_dotenv()
-
+# .env is loaded in the package __init__ (before config.py reads the environment at import
+# time); by the time this module runs, os.getenv below already reflects it.
 TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
 # Load models into VRAM at worker startup instead of lazily on first request. Set to

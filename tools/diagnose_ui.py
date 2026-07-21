@@ -28,9 +28,8 @@ from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
 
 # One resident model provider for the life of the process: the model loads once and
 # stays loaded between UI interactions instead of reloading per click.
-_model_manager = WhisperModelProvider(WhisperModelConfig())
-_handler = FasterWhisperHandler()
-_handler.model_manager = _model_manager
+_model_manager = WhisperModelProvider(WhisperModelConfig(), faster_whisper_config.default_model_name)
+_handler = FasterWhisperHandler(model_manager=_model_manager, diarization=DiarizationService())
 
 _LANGUAGE_CHOICES = ["auto (per-region detection)"] + sorted(lang.value for lang in Language)
 

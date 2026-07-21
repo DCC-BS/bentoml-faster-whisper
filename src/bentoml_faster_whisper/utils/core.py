@@ -77,11 +77,11 @@ class Word(BaseModel):
     def from_segments(cls, segments: Iterable[Segment]) -> list[Word]:
         words: list[Word] = []
         for segment in segments:
-            # NOTE: a temporary "fix" for https://github.com/fedirz/faster-whisper-server/issues/58.
-            # TODO: properly address the issue
-            assert segment.words is not None, (
-                "Segment must have words. If you are using an API ensure `timestamp_granularities[]=word` is set"
-            )
+            # A word-less segment (faster-whisper can emit one even with word_timestamps=True,
+            # and restore_and_split yields the word-less branch) simply contributes no words —
+            # it must not crash the whole verbose_json response.
+            if segment.words is None:
+                continue
             words.extend(segment.words)
         return words
 
@@ -153,8 +153,7 @@ def vtt_format_timestamp(ts: float) -> str:
 
 
 def segments_to_vtt(segment: Segment, i: int) -> str:
-    start = segment.start if i > 0 else 0.0
-    result = f"{vtt_format_timestamp(start)} --> {vtt_format_timestamp(segment.end)}\n{segment.text}\n\n"
+    result = f"{vtt_format_timestamp(segment.start)} --> {vtt_format_timestamp(segment.end)}\n{segment.text}\n\n"
 
     if i == 0:
         return f"WEBVTT\n\n{result}"
