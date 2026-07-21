@@ -20,7 +20,7 @@ def _process_empty_language(language: None | Language | str | bytes) -> Language
             logger.warning(
                 f"Cannot decode bytes language: {language}. Using default: {faster_whisper_config.default_language}"
             )
-            return Language(value=faster_whisper_config.default_language)
+            return faster_whisper_config.default_language
 
     if language == "" or language is None:
         return None
@@ -32,7 +32,9 @@ def _process_empty_language(language: None | Language | str | bytes) -> Language
         return Language(value=language)
     except ValueError:
         logger.warning(f"Invalid language: {language}. Using default: {faster_whisper_config.default_language}")
-        return Language(value=faster_whisper_config.default_language)
+        # default_language is already a Language|None; return it directly — wrapping None
+        # in Language() would raise, turning "fall back to auto-detect" into a 422.
+        return faster_whisper_config.default_language
 
 
 ValidatedLanguage = Annotated[Language | None, BeforeValidator(_process_empty_language)]

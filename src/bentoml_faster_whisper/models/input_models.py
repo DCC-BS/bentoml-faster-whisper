@@ -111,7 +111,7 @@ def validate_timestamp_granularities(response_format, timestamp_granularities, d
 
     if response_format == ResponseFormat.JSON_DIARZED and not diarization:
         raise InvalidArgument(
-            f"response_format must be set to {ResponseFormat.JSON_DIARZED} when diarization is enabled"
+            f"diarization must be enabled when response_format is set to {ResponseFormat.JSON_DIARZED}"
         )
 
     if "word" in timestamp_granularities and response_format == ResponseFormat.JSON_DIARZED:

@@ -136,10 +136,13 @@ class FasterWhisper:
 
             for segment in segments:
                 if request.progress_id:
+                    # duration can be 0 for a degenerate/empty container; keep the bar at the
+                    # post-diarization floor instead of dividing by zero.
+                    fraction = segment.end / transcription_info.duration if transcription_info.duration else 0.0
                     self.progress_handler.update_progress(
                         request.progress_id,
                         ProgressResponse(
-                            progress=0.3 + 0.7 * (segment.end / transcription_info.duration),
+                            progress=0.3 + 0.7 * fraction,
                             currentTime=segment.end,
                             duration=transcription_info.duration,
                         ),
@@ -163,7 +166,10 @@ class FasterWhisper:
         self._prepare_transcribe(request)
 
         segments, transcription_info = self.handler.prepare_audio_segments(request)
-        generator = segments_to_streaming_response(segments, transcription_info, request.response_format)
+        # Drop hallucinations/silence and apply the same normalization as the non-streaming
+        # endpoints so the stream doesn't leak segments the other paths filter out.
+        cleaned = clean_transcription_segments(segments, transcription_info)
+        generator = segments_to_streaming_response(cleaned, transcription_info, request.response_format)
 
         try:
             for chunk in generator:

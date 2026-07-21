@@ -332,6 +332,12 @@ class FasterWhisperHandler:
             restored = restore_and_split_segments(fw_segments, run_chunks, run_intervals, original_duration_s)
             runs.append((language, run_intervals, info, restored))
 
+        if not runs:
+            # Reachable only if every run's intervals collapse to no decodable audio (e.g. all
+            # clamped past the decoded length near EOF). has_speech upstream makes this practically
+            # impossible; guard so it surfaces as a clear decode error instead of max()'s opaque one.
+            raise RuntimeError("no decodable speech runs after collapsing diarization turns")
+
         # The response carries a single top-level language: the one covering the most
         # speech time. Per-segment languages preserve the rest.
         majority_language, _, majority_info, _ = max(runs, key=lambda run: sum(end - start for start, end in run[1]))

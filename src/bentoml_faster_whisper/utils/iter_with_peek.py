@@ -1,23 +1,27 @@
 from typing import Iterable
 
+# Distinct "nothing buffered" marker so a legitimately-yielded None is not mistaken
+# for an empty peek buffer (None is a valid stream item).
+_UNSET = object()
+
 
 class IterWithPeek[T]:
     def __init__(self, it: Iterable[T]):
         self.it = iter(it)
-        self.peeked = None
+        self.peeked: object = _UNSET
 
     def __iter__(self):
         return self
 
-    def __next__(self):
-        if self.peeked is not None:
+    def __next__(self) -> T:
+        if self.peeked is not _UNSET:
             item = self.peeked
-            self.peeked = None
-            return item
+            self.peeked = _UNSET
+            return item  # type: ignore[return-value]
         return next(self.it)
 
-    def has_next(self):
-        if self.peeked is not None:
+    def has_next(self) -> bool:
+        if self.peeked is not _UNSET:
             return True
 
         try:
@@ -26,7 +30,7 @@ class IterWithPeek[T]:
         except StopIteration:
             return False
 
-    def peek(self):
-        if self.peeked is None:
+    def peek(self) -> T:
+        if self.peeked is _UNSET:
             self.peeked = next(self.it)
-        return self.peeked
+        return self.peeked  # type: ignore[return-value]
