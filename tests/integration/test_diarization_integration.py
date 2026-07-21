@@ -1,6 +1,6 @@
 import pytest
 
-from diarization_service import DiarizationService
+from bentoml_faster_whisper.services.diarization_service import DiarizationService
 
 pytestmark = pytest.mark.integration
 

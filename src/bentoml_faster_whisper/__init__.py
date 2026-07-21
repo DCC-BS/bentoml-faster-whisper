@@ -1,0 +1,1 @@
+"""bentoml-faster-whisper package."""

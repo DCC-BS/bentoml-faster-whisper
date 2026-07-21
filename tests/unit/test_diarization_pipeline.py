@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 from faster_whisper.audio import decode_audio
 
-from api_models.enums import ResponseFormat
-from api_models.TranscriptionRequest import TranscriptionRequest
-from helpers.speech_regions import WHISPER_SAMPLE_RATE
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.utils.speech_regions import WHISPER_SAMPLE_RATE
 
 LONG_AUDIO = Path("./tests/assets/long_example_audio.mp3")
 

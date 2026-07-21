@@ -4,7 +4,7 @@ import pytest
 from openai import OpenAI
 from openai.types.audio import Transcription
 
-from api_models.enums import ResponseFormat, TimestampGranularity
+from bentoml_faster_whisper.models.enums import ResponseFormat, TimestampGranularity
 
 # to run these test start the server with the following command:
 # uv run bentoml serve service:FasterWhisper -p 8003

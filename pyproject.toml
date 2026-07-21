@@ -1,3 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bentoml_faster_whisper"]
+
 [project]
 name = "bentoml-faster-whisper"
 version = "2.0.0"
@@ -17,7 +24,6 @@ dependencies = [
     # libcublas.so.12 -> .so.13, which is ABI-compatible for ctranslate2's use
     # (OpenNMT/CTranslate2#1933), so no separate CUDA-12 pip libs are needed.
     "pydantic>=2.12.2",
-    "requests~=2.34.2",
     "ctranslate2~=4.8.0",
     "python-dotenv~=1.2.0",
     "uvicorn~=0.50.1",
@@ -25,6 +31,8 @@ dependencies = [
     "huggingface-hub>=0.23",
     "numpy>=2.5.0",
     "structlog>=26.1.0",
+    "dcc-backend-common>=0.1.4",
+    "dependency-injector>=4.48.3",
 ]
 [dependency-groups]
 dev = [
@@ -35,13 +43,13 @@ dev = [
     "openai>=1.65.1",
     "ruff>=0.15.18",
     "gradio>=6.20.0",
+    "requests~=2.34.2",
 ]
 
 [tool.bentoml.build]
-service = "service:FasterWhisper"
+service = "bentoml_faster_whisper.service:FasterWhisper"
 description = "OpenAI compatible ++ FasterWhisper API"
-include = ["*.py", "path/to/a/file.csv"]
-exclude = ["tests/", "launch.py"]
+include = ["src/**/*", "README.md", "pyproject.toml"]
 
 [tool.bentoml.build.labels]
 owner = "Yanick-Schraner"
@@ -64,7 +72,7 @@ url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
@@ -74,13 +82,8 @@ markers = [
 ]
 filterwarnings = [
     "ignore",
-    "default:::helpers.*",
-    "default:::core.*",
-    "default:::handlers.*",
-    "default:::service.*",
-    "default:::api_models.*",
+    "default:::bentoml_faster_whisper.*",
     "default:::tests.*",
-    "default:::config.*",
 ]
 
 [tool.ruff]

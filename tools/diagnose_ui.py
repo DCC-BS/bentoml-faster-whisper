@@ -15,16 +15,16 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import gradio as gr
 
-from api_models.enums import Language, ResponseFormat
-from api_models.TranscriptionRequest import TranscriptionRequest
-from config import WhisperModelConfig, faster_whisper_config
-from diarization_service import DiarizationSegment, DiarizationService
-from handlers.fast_whipser_handler import FasterWhisperHandler
-from model_manager import WhisperModelProvider
+from bentoml_faster_whisper.config import WhisperModelConfig, faster_whisper_config
+from bentoml_faster_whisper.models.enums import Language, ResponseFormat
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.services.diarization_service import DiarizationSegment, DiarizationService
+from bentoml_faster_whisper.services.faster_whisper_handler import FasterWhisperHandler
+from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
 
 # One resident model provider for the life of the process: the model loads once and
 # stays loaded between UI interactions instead of reloading per click.

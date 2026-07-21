@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from faster_whisper.transcribe import Segment as FWSegment
 from faster_whisper.transcribe import Word as FWWord
 
-import helpers.speech_regions as sr
-from helpers.speech_regions import (
+import bentoml_faster_whisper.utils.speech_regions as sr
+from bentoml_faster_whisper.utils.speech_regions import (
     diarization_to_speech_intervals,
     group_intervals_by_language,
     restore_and_split_segments,

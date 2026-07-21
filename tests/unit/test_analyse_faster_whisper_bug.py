@@ -1,11 +1,11 @@
 import pytest
 from faster_whisper import WhisperModel
 
-from api_models.enums import ResponseFormat
-from api_models.output_models import segments_to_response
-from config import WhisperModelConfig, faster_whisper_config
-from core import Segment
-from model_manager import WhisperModelProvider
+from bentoml_faster_whisper.config import WhisperModelConfig, faster_whisper_config
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.output_models import segments_to_response
+from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
+from bentoml_faster_whisper.utils.core import Segment
 
 
 class TestFasterWhisperBug:

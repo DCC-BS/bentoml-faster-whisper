@@ -29,10 +29,10 @@ from pathlib import Path
 
 import pytest
 
-from api_models.enums import ResponseFormat
-from api_models.TranscriptionRequest import TranscriptionRequest
-from diarization_service import DiarizationService
-from helpers.speech_regions import diarization_to_speech_intervals
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.services.diarization_service import DiarizationService
+from bentoml_faster_whisper.utils.speech_regions import diarization_to_speech_intervals
 from tests.fuzzy_match import text_similarity
 
 AUDIO = Path("./tests/assets/internal/brain_dump.mp3")

@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 from typing import Any
 
-from core import Segment
-from helpers.transcription_cleaner import clean_transcription_segments
+from bentoml_faster_whisper.utils.core import Segment
+from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
 
 
 def _segment(**overrides: Any) -> Segment:

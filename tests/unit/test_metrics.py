@@ -1,9 +1,9 @@
-"""Guards for the lazy, multiprocess-safe metric registry (helpers/metrics.py).
+"""Guards for the lazy, multiprocess-safe metric registry (bentoml_faster_whisper/utils/metrics.py).
 
 The regression these protect against: creating Prometheus metrics at module-import
 time freezes prometheus_client into single-process mode before BentoML sets
 PROMETHEUS_MULTIPROC_DIR, so the metrics never reach the mmap files the /metrics
-endpoint scrapes and silently disappear from Grafana. See helpers/metrics.py.
+endpoint scrapes and silently disappear from Grafana. See bentoml_faster_whisper/utils/metrics.py.
 """
 
 import subprocess
@@ -12,19 +12,19 @@ from pathlib import Path
 
 import pytest
 
-from api_models.enums import ResponseFormat
-from api_models.TranscriptionRequest import TranscriptionRequest
-from helpers import metrics
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.utils import metrics
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 AUDIO = ASSETS / "example_audio.mp3"
 
 
 def test_import_does_not_eagerly_import_prometheus_client():
-    """Importing helpers.metrics must not pull in prometheus_client — that eager
+    """Importing bentoml_faster_whisper.utils.metrics must not pull in prometheus_client — that eager
     import is exactly what breaks multiprocess metric collection. Checked in a fresh
     subprocess because prometheus_client is already imported in this test session."""
-    code = "import helpers.metrics, sys; assert 'prometheus_client' not in sys.modules"
+    code = "import sys; sys.path.insert(0, 'src'); import bentoml_faster_whisper.utils.metrics; assert 'prometheus_client' not in sys.modules"
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 

@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from api_models.enums import ResponseFormat
-from api_models.TranscriptionRequest import TranscriptionRequest
-from handlers.fast_whipser_handler import FasterWhisperHandler
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.services.faster_whisper_handler import FasterWhisperHandler
 
 AUDIO = Path("./tests/assets/multilingual_de_en.mp3")
 LANGUAGE_BOUNDARY_S = 24.0  # inside the silence gap between the German and English halves
@@ -93,7 +93,7 @@ def test_lid_fallback_detects_one_language_over_all_speech(diarizing_handler, mo
     This is the only path that consumes the full-file collapsed audio, so it guards the
     collapse plumbing in prepare_audio_segments / _transcribe_language_runs end to end.
     """
-    from handlers import fast_whipser_handler as handler_module
+    from bentoml_faster_whisper.services import faster_whisper_handler as handler_module
 
     # Force every per-turn detection to be indeterminate so _transcribe_language_runs takes
     # its detect_language(collapsed) fallback instead of the per-turn Viterbi path.

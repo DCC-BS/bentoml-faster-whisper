@@ -2,9 +2,9 @@ from fastapi import HTTPException
 import pytest
 from pydantic import ValidationError
 
-from api_models.TranscriptionRequest import TranscriptionRequest
-from config import faster_whisper_config
-from service import FasterWhisper
+from bentoml_faster_whisper.config import faster_whisper_config
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.service import FasterWhisper
 
 
 def test_get_models_standard_case():

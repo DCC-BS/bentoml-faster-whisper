@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from api_models.enums import ResponseFormat
-from api_models.TranslationRequest import TranslationRequest
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.translation_request import TranslationRequest
 
 pytestmark = pytest.mark.model
 

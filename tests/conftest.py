@@ -1,10 +1,10 @@
 import pytest
 import torch
 
-from config import WhisperModelConfig
-from handlers.fast_whipser_handler import FasterWhisperHandler
-from model_manager import WhisperModelProvider
-from service import FasterWhisper
+from bentoml_faster_whisper.config import WhisperModelConfig
+from bentoml_faster_whisper.service import FasterWhisper
+from bentoml_faster_whisper.services.faster_whisper_handler import FasterWhisperHandler
+from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
 
 _original_torch_load = torch.load
 

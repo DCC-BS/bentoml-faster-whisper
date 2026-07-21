@@ -24,9 +24,9 @@ from pathlib import Path
 import pytest
 from pyannote.core import Segment as PyannoteSegment
 
-from api_models.enums import ResponseFormat
-from api_models.TranscriptionRequest import TranscriptionRequest
-from diarization_service import DiarizationSegment
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.services.diarization_service import DiarizationSegment
 
 pytestmark = pytest.mark.model
 

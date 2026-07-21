@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from bentoml.exceptions import InvalidArgument
 
-from api_models.enums import ResponseFormat, TimestampGranularity
-from api_models.TranscriptionRequest import TranscriptionRequest
+from bentoml_faster_whisper.models.enums import ResponseFormat, TimestampGranularity
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
 
 pytestmark = pytest.mark.model
 

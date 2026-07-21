@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from pyannote.core import Segment
 
-from diarization_service import DiarizationSegment, DiarizationService
+from bentoml_faster_whisper.services.diarization_service import DiarizationSegment, DiarizationService
 
 
 def _make_service_with_mock_pipeline(turns: list[tuple]) -> tuple[DiarizationService, MagicMock]:

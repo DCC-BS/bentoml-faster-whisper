@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from helpers.logger import configure_logging
+from bentoml_faster_whisper.utils.logger import configure_logging
 
 
 class TestLoggingConfiguration(unittest.TestCase):
@@ -63,16 +63,16 @@ class TestLoggingConfiguration(unittest.TestCase):
             self.assertEqual(logging.getLogger("httpx").level, logging.WARNING)
 
     def test_client_error_filter(self):
+        import sys
         from pydantic import BaseModel, ValidationError
         from starlette.exceptions import HTTPException
-        import sys
 
         # Initialize logging to set up the handler and filter
         configure_logging()
         handler = logging.getLogger().handlers[0]
 
         # Find the ClientErrorFilter
-        from helpers.logger import ClientErrorFilter
+        from bentoml_faster_whisper.utils.logger import ClientErrorFilter
 
         client_filter = None
         for f in handler.filters:

@@ -11,16 +11,16 @@ import pytest
 from faster_whisper import WhisperModel
 from pydantic import ValidationError
 
-from api_models.enums import Language
-from api_models.TranscriptionRequest import TranscriptionRequest
-from config import LanguageIdConfig
-from helpers.language_id import (
+from bentoml_faster_whisper.config import LanguageIdConfig
+from bentoml_faster_whisper.models.enums import Language
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.utils.language_id import (
     detect_turn_language_probs,
     fill_missing_rows_from_intervals,
     resolve_language_inventory,
     viterbi_smooth_languages,
 )
-from helpers.speech_regions import turns_to_language_runs
+from bentoml_faster_whisper.utils.speech_regions import turns_to_language_runs
 
 # ---------------------------------------------------------------------------
 # viterbi_smooth_languages

@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from api_models.enums import ResponseFormat
-from api_models.TranscriptionRequest import TranscriptionRequest
-from config import WhisperModelConfig
-from diarization_service import DiarizationService
-from handlers.progress_handler import ProgressHandler
-from helpers.utils import get_audio_duration
-from model_manager import WhisperModelProvider
+from bentoml_faster_whisper.config import WhisperModelConfig
+from bentoml_faster_whisper.models.enums import ResponseFormat
+from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
+from bentoml_faster_whisper.services.diarization_service import DiarizationService
+from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
+from bentoml_faster_whisper.services.progress_handler import ProgressHandler
+from bentoml_faster_whisper.utils.core import get_audio_duration
 
 SHORT_AUDIO = Path("./tests/assets/example_audio.mp3")
 LONG_AUDIO = Path("./tests/assets/long_example_audio.mp3")

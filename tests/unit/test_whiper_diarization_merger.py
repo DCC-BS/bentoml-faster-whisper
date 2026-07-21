@@ -1,8 +1,8 @@
 import pytest
 from pyannote.core import Segment
 
-from diarization_service import DiarizationSegment
-from helpers.whiper_diarization_merger import merge_whipser_diarization
+from bentoml_faster_whisper.services.diarization_service import DiarizationSegment
+from bentoml_faster_whisper.utils.whisper_diarization_merger import merge_whipser_diarization
 
 
 class DummyWord:
