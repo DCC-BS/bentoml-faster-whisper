@@ -1,11 +1,16 @@
-"""Structured logging for the service, following the DCC-BS backend logging pattern.
+"""Structured logging for the service — a thin wrapper over ``dcc_backend_common.logger``.
 
-A single pipeline renders everything: structlog events *and* stdlib records (BentoML,
-uvicorn, our own ``logging.getLogger`` modules, and loguru forwarded in) all flow through
-the root handler — JSON lines in production (``IS_PROD=true``), a Rich console renderer in
-development.
+dcc's ``init_logger`` owns the whole pipeline: structlog events and stdlib records (uvicorn,
+third-party libs) all render through one root handler — JSON lines when ``IS_PROD=true``, a Rich
+console renderer otherwise. We layer three service-specific touches on top:
 
-Environment variables:
+- quiet ctranslate2 plus a few noisy libraries dcc doesn't cover (the bentoml/circus server
+  loggers, ``huggingface_hub``, ``filelock``);
+- demote client 4xx / validation errors from ERROR to WARNING (``ClientErrorFilter``) so a bad
+  request is one concise line instead of a stack trace;
+- a ``log_exceptions`` decorator (sync + generator) that logs at the point of failure and re-raises.
+
+Environment variables (read by dcc ``init_logger``):
 - ``IS_PROD``  — ``true`` selects JSON output; anything else (default) uses the dev console.
 - ``LOG_LEVEL`` — root level for app diagnostics (default ``INFO``).
 """
@@ -19,17 +24,18 @@ from collections.abc import Callable
 from typing import TypeVar, cast
 
 import ctranslate2
+from dcc_backend_common.logger import get_logger as dcc_get_logger
+from dcc_backend_common.logger import init_logger as dcc_init_logger
 from structlog.stdlib import BoundLogger
-from structlog.types import EventDict, WrappedLogger
 
 _F = TypeVar("_F", bound=Callable)
 
-# Libraries whose INFO chatter (per-connection open/close, etc.) pollutes prod logs.
-_QUIET_LIBRARIES = ("httpx", "httpcore", "urllib3", "huggingface_hub", "filelock")
-
-# Loggers that BentoML / uvicorn attach their own handlers to. We clear those handlers so
-# records flow through the single root pipeline instead of being double-formatted.
+# Server loggers whose level we pin to LOG_LEVEL. dcc tames uvicorn's handlers but not
+# bentoml/circus, which run the BentoML server process.
 _PIPELINE_LOGGERS = ("bentoml", "uvicorn", "uvicorn.error", "uvicorn.asgi", "circus")
+
+# Libraries whose INFO chatter (per-connection open/close, download progress) pollutes logs.
+_QUIET_LIBRARIES = ("httpx", "httpcore", "urllib3", "huggingface_hub", "filelock")
 
 
 def _exception_info(exc_info: object) -> tuple[type[BaseException] | None, BaseException | None]:
@@ -66,20 +72,6 @@ def _is_client_error(exc_type: type[BaseException], exc_value: BaseException | N
         except Exception:
             return False
     return False
-
-
-def _drop_client_error_traceback(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
-    """Strip the traceback for client (4xx) errors so only genuine 5xx faults carry a stack.
-
-    Runs before ``format_exc_info`` in the pipeline; a bad request stays a single concise
-    line while real server errors keep their full traceback.
-    """
-    exc_info = event_dict.get("exc_info")
-    if exc_info:
-        exc_type, exc_value = _exception_info(exc_info)
-        if exc_type is not None and _is_client_error(exc_type, exc_value):
-            event_dict.pop("exc_info", None)
-    return event_dict
 
 
 class ClientErrorFilter(logging.Filter):
@@ -133,28 +125,8 @@ class ClientErrorFilter(logging.Filter):
         return True
 
 
-def _drop_color_message_key(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
-    """Uvicorn duplicates its message with ANSI codes under "color_message" — drop it."""
-    event_dict.pop("color_message", None)
-    return event_dict
-
-
 def _configure_library_loggers(level: int) -> None:
-    for name in _PIPELINE_LOGGERS:
-        lib_logger = logging.getLogger(name)
-        lib_logger.handlers.clear()
-        lib_logger.propagate = True
-        lib_logger.setLevel(level)
-
-    for name in _QUIET_LIBRARIES:
-        logging.getLogger(name).setLevel(max(level, logging.WARNING))
-
-
-from dcc_backend_common.logger import get_logger as dcc_get_logger
-from dcc_backend_common.logger import init_logger as dcc_init_logger
-
-
-def _configure_library_loggers(level: int) -> None:
+    """Pin the server loggers to LOG_LEVEL and cap noisy libraries at >= WARNING."""
     for name in _PIPELINE_LOGGERS:
         lib_logger = logging.getLogger(name)
         lib_logger.handlers.clear()
@@ -166,11 +138,12 @@ def _configure_library_loggers(level: int) -> None:
 
 
 def configure_logging() -> None:
+    """Initialise the dcc logging pipeline, then apply our service-specific tweaks."""
     ctranslate2.set_log_level(logging.WARN)
-    # dcc_init_logger() reads IS_PROD via get_env_or_throw and aborts if it is unset.
-    # IS_PROD is documented above as optional (default: dev console), so default it here
-    # rather than let a missing flag crash every import of the service module (e.g. CI
-    # collecting tests with an empty .env, or `bentoml build` introspecting the service).
+    # dcc_init_logger() reads IS_PROD via get_env_or_throw and aborts if it is unset. IS_PROD
+    # is documented above as optional (default: dev console), so default it here rather than
+    # crash every import of the service module (CI collecting tests with an empty .env, or
+    # `bentoml build` introspecting the service). Prod sets IS_PROD=true explicitly (compose.yaml).
     os.environ.setdefault("IS_PROD", "false")
     dcc_init_logger()
 
