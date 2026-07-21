@@ -6,7 +6,7 @@ import time
 
 from faster_whisper import WhisperModel
 
-from bentoml_faster_whisper.config import WhisperModelConfig, faster_whisper_config
+from bentoml_faster_whisper.config import WhisperModelConfig
 from bentoml_faster_whisper.utils import metrics
 
 logger = logging.getLogger(__name__)
@@ -15,17 +15,17 @@ logger = logging.getLogger(__name__)
 class WhisperModelProvider:
     """Loads the single served Whisper model once and keeps it resident.
 
-    The model id is fixed to ``faster_whisper_config.default_model_name`` (the only
-    model this API serves); device / compute / thread settings come from
-    ``WhisperModelConfig``. The first ``get()`` loads the weights under a lock; every
-    later ``get()`` returns the same instance. The model is never unloaded, so callers
-    may let the lazy ``transcribe()`` generators outlive the calling method without any
-    ref-count guard.
+    The model id (the only model this API serves) is passed in as ``default_model_name``;
+    device / compute / thread settings come from ``WhisperModelConfig``. Both are supplied
+    by the DI container from the app config. The first ``get()`` loads the weights under a
+    lock; every later ``get()`` returns the same instance. The model is never unloaded, so
+    callers may let the lazy ``transcribe()`` generators outlive the calling method without
+    any ref-count guard.
     """
 
-    def __init__(self, whisper_config: WhisperModelConfig) -> None:
+    def __init__(self, whisper_config: WhisperModelConfig, default_model_name: str) -> None:
         self.whisper_config = whisper_config
-        self.model_id = faster_whisper_config.default_model_name
+        self.model_id = default_model_name
         self._lock = threading.Lock()
         self._model: WhisperModel | None = None
 

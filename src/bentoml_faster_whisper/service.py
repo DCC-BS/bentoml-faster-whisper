@@ -23,24 +23,11 @@ from bentoml_faster_whisper.models.progress_response import ProgressResponse
 from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
 from bentoml_faster_whisper.models.translation_request import TranslationRequest
 from bentoml_faster_whisper.container import Container
-from bentoml_faster_whisper.services.faster_whisper_handler import FasterWhisperHandler
-from bentoml_faster_whisper.services.progress_handler import ProgressHandler
 from bentoml_faster_whisper.utils.core import Segment
 from bentoml_faster_whisper.utils.logger import configure_logging
 from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
 
 logger = logging.getLogger(__name__)
-
-
-def _served_model_object() -> ModelObject:
-    """The single model this API serves, as a static OpenAI-style ModelObject."""
-    return ModelObject(
-        id=faster_whisper_config.default_model_name,
-        created=1668556800,  # large-v2 release (2022-11-16); static, no HF query.
-        object_="model",
-        owned_by="Systran",
-        language=[],
-    )
 
 
 fastapi = FastAPI()
@@ -87,15 +74,11 @@ DURATION_BUCKETS_S = [
 )
 @bentoml.asgi_app(fastapi, path="/v1")
 class FasterWhisper:
-    def __init__(
-        self,
-        handler: FasterWhisperHandler | None = None,
-        progress_handler: ProgressHandler | None = None,
-    ):
+    def __init__(self):
         self.container = Container()
-        self.container.wire(modules=[__name__])
-        self.handler = handler or self.container.faster_whisper_handler()
-        self.progress_handler = progress_handler or self.container.progress_handler()
+        self.config = self.container.config()
+        self.handler = self.container.faster_whisper_handler()
+        self.progress_handler = self.container.progress_handler()
 
     @bentoml.on_startup
     def warmup(self):
@@ -199,21 +182,34 @@ class FasterWhisper:
     def get_progress(self, progress_id: str) -> ProgressResponse:
         return self.progress_handler.get_progress(progress_id)
 
+    def _served_model_object(self) -> ModelObject:
+        """The single model this API serves, as a static OpenAI-style ModelObject."""
+        return ModelObject(
+            id=self.config.faster_whisper.default_model_name,
+            created=1668556800,  # large-v2 release (2022-11-16); static, no HF query.
+            object_="model",
+            owned_by="Systran",
+            language=[],
+        )
+
     @fastapi.get("/models")
     def get_models(self) -> ModelListResponse:
-        return ModelListResponse(data=[_served_model_object()])
+        return ModelListResponse(data=[self._served_model_object()])
 
     @fastapi.get("/models/{model_name:path}")
     def get_model(
         self,
+        # examples=[...] is evaluated at class-definition time, so it reads the import-time
+        # config global rather than the injected self.config used by the runtime checks below.
         model_name: Annotated[str, FastAPIPath(examples=[faster_whisper_config.default_model_name])],
     ) -> ModelObject:
-        if model_name != faster_whisper_config.default_model_name:
+        served = self.config.faster_whisper.default_model_name
+        if model_name != served:
             raise HTTPException(
                 status_code=404,
-                detail=f"Model '{model_name}' not found. Only '{faster_whisper_config.default_model_name}' is served.",
+                detail=f"Model '{model_name}' not found. Only '{served}' is served.",
             )
-        return _served_model_object()
+        return self._served_model_object()
 
     def _prepare_transcribe(self, request: TranscriptionRequest):
         validate_timestamp_granularities(

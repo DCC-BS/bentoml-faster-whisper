@@ -108,19 +108,15 @@ class LanguageIdConfig(BaseModel):
 
 
 class AppConfig(AbstractAppConfig):
-    """Application configuration for bentoml-faster-whisper extending AbstractAppConfig."""
-
     whisper_model: WhisperModelConfig = Field(default_factory=WhisperModelConfig)
     faster_whisper: FasterWhisperConfig = Field(default_factory=FasterWhisperConfig)
     language_id: LanguageIdConfig = Field(default_factory=LanguageIdConfig.from_env)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
-        return cls(
-            whisper_model=WhisperModelConfig(),
-            faster_whisper=FasterWhisperConfig(),
-            language_id=LanguageIdConfig.from_env(),
-        )
+        # The per-field default_factory declarations above already build each sub-config
+        # (LanguageIdConfig.from_env included), so cls() reads the environment fully.
+        return cls()
 
 
 _config: AppConfig | None = None
@@ -133,5 +129,9 @@ def get_config() -> AppConfig:
     return _config
 
 
+# Module-level aliases for the two sub-configs read at IMPORT time to build pydantic model
+# schemas (Field defaults / Annotated constraints in models/*, language_id util). Those are
+# frozen at class-definition time and can't be DI-injected. Runtime consumers (services,
+# container) take config via the DI container / get_config() instead.
 faster_whisper_config = get_config().faster_whisper
 language_id_config = get_config().language_id

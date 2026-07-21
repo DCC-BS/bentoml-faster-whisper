@@ -155,12 +155,10 @@ def model_loads_total():
 
 
 def record_failure(stage: str, exc: BaseException) -> None:
-    """Count one pipeline failure, labelled by stage and exception type."""
     transcription_failures().labels(stage, type(exc).__name__).inc()
 
 
 def observe_decode(duration_s: float, language: str | None) -> None:
-    """Record the decoded audio length and detected/reported language for one request."""
     audio_length().observe(duration_s)
     detected_language().labels(language or "unknown").inc()
 

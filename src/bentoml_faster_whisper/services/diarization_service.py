@@ -56,7 +56,7 @@ class _DiarizationProgressHook:
     ) -> None:
         weight = _DIARIZATION_STEP_WEIGHTS.get(step_name)
         if weight is None:
-            return  # unknown step: leave the bar where it is
+            return
         within = (completed / total) if (total and completed is not None) else 1.0
         within = clamp(within, 0.0, 1.0)
         fraction = min(self._base[step_name] + weight * within, 1.0)
@@ -106,10 +106,6 @@ def _as_wav(audio_path: str) -> Iterator[str]:
 
 
 class DiarizationService:
-    """
-    A service for speaker diarization using the pyannote.audio library.
-    """
-
     def __init__(self) -> None:
         self.pipeline: Pipeline | None = None
         # Guards both lazy loading and inference: a pyannote pipeline is not thread-safe.
@@ -162,17 +158,7 @@ class DiarizationService:
         num_speaker: int | None = None,
         progress_callback: Callable[[float], None] | None = None,
     ) -> Iterable[DiarizationSegment]:
-        """
-        Perform speaker diarization on the given audio file.
-
-        Args:
-            audio_path (str): Path to the audio file to be diarized.
-            num_speaker (int, optional): The number of speakers to be identified. Defaults to None.
-
-        Returns:
-            Pipeline: The diarization pipeline with the results.
-        """
-
+        """Perform speaker diarization on the given audio file."""
         if not os.path.isfile(audio_path):
             raise FileNotFoundError(f"File not found: {audio_path}")
 

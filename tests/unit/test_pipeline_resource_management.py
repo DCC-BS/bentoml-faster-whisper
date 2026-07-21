@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from bentoml_faster_whisper.config import WhisperModelConfig
+from bentoml_faster_whisper.config import WhisperModelConfig, faster_whisper_config
 from bentoml_faster_whisper.models.enums import ResponseFormat
 from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
 from bentoml_faster_whisper.services.diarization_service import DiarizationService
@@ -71,7 +71,7 @@ def test_concurrent_transcriptions_succeed(handler):
 def test_provider_loads_model_once_under_concurrency(monkeypatch):
     """The provider loads the model exactly once and hands the same instance to every
     caller, even when many threads race on the first get()."""
-    provider = WhisperModelProvider(WhisperModelConfig())
+    provider = WhisperModelProvider(WhisperModelConfig(), faster_whisper_config.default_model_name)
     loads: list[int] = []
 
     def fake_load() -> object:

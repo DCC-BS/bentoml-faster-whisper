@@ -42,14 +42,13 @@ def _pack_segements_in_range(
     while segments.has_next() and segments.peek().start <= end_time:
         next_segment = segments.peek()
 
-        # skip the segment if it ends before the window
         if next_segment.end < start_time:
             next(segments)
             continue
 
         yield next_segment
 
-        # break and don't consume the segment if the segment ends after the window
+        # Leave a segment that spills past the window unconsumed so the next window sees it too.
         if next_segment.end > end_time:
             break
 
@@ -114,7 +113,6 @@ def _nearest_speaker(
 
 
 def _majority_speaker(words: list, word_speakers: list[Optional[str]]) -> Optional[str]:
-    """Return the speaker covering the most total word duration."""
     duration: dict[str, float] = {}
     for word, speaker in zip(words, word_speakers):
         if speaker is not None:

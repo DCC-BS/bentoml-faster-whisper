@@ -18,7 +18,7 @@ class TestFasterWhisperBug:
         audio_file_name = "../assets/RecordedAudio.wav"
 
         model = WhisperModel(model_name)
-        provider = WhisperModelProvider(WhisperModelConfig())
+        provider = WhisperModelProvider(WhisperModelConfig(), faster_whisper_config.default_model_name)
 
         # when
         segments_package, transcription_info_package = model.transcribe(audio_file_name)

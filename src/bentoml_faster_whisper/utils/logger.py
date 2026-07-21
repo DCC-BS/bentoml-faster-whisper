@@ -126,7 +126,6 @@ class ClientErrorFilter(logging.Filter):
 
 
 def _configure_library_loggers(level: int) -> None:
-    """Pin the server loggers to LOG_LEVEL and cap noisy libraries at >= WARNING."""
     for name in _PIPELINE_LOGGERS:
         lib_logger = logging.getLogger(name)
         lib_logger.handlers.clear()
@@ -138,13 +137,9 @@ def _configure_library_loggers(level: int) -> None:
 
 
 def configure_logging() -> None:
-    """Initialise the dcc logging pipeline, then apply our service-specific tweaks."""
     ctranslate2.set_log_level(logging.WARN)
-    # dcc_init_logger() reads IS_PROD via get_env_or_throw and aborts if it is unset. IS_PROD
-    # is documented above as optional (default: dev console), so default it here rather than
-    # crash every import of the service module (CI collecting tests with an empty .env, or
-    # `bentoml build` introspecting the service). Prod sets IS_PROD=true explicitly (compose.yaml).
-    os.environ.setdefault("IS_PROD", "false")
+    # IS_PROD is required by dcc_init_logger() (get_env_or_throw); its default lives in
+    # .env.schema (IS_PROD=false), loaded by varlock at runtime and by --env-file .env in tests.
     dcc_init_logger()
 
     level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
@@ -157,7 +152,6 @@ def configure_logging() -> None:
 
 
 def get_logger(name: str | None = None) -> BoundLogger:
-    """Return a bound structlog logger (optionally named, typically ``__name__``)."""
     return dcc_get_logger(name)
 
 

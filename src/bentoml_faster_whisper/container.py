@@ -8,15 +8,12 @@ from bentoml_faster_whisper.services.progress_handler import ProgressHandler
 
 
 class Container(containers.DeclarativeContainer):
-    """Dependency injection container for bentoml-faster-whisper."""
-
-    wiring_config = containers.WiringConfiguration(modules=["bentoml_faster_whisper.service"])
-
     config = providers.Singleton(get_config)
 
     model_manager = providers.Singleton(
         WhisperModelProvider,
         whisper_config=config.provided.whisper_model,
+        default_model_name=config.provided.faster_whisper.default_model_name,
     )
 
     diarization_service = providers.Singleton(DiarizationService)

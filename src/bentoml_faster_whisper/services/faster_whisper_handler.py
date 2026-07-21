@@ -8,7 +8,6 @@ from faster_whisper import WhisperModel
 from faster_whisper.audio import decode_audio
 from faster_whisper.vad import VadOptions
 
-from bentoml_faster_whisper.config import WhisperModelConfig
 from bentoml_faster_whisper.models.decode_params import DecodeParams
 from bentoml_faster_whisper.models.enums import ResponseFormat, Task
 from bentoml_faster_whisper.models.output_models import (
@@ -51,12 +50,13 @@ def _strip_words(segments: Iterable[Segment]) -> Iterable[Segment]:
 class FasterWhisperHandler:
     def __init__(
         self,
-        model_manager: WhisperModelProvider | None = None,
-        diarization: DiarizationService | None = None,
+        model_manager: WhisperModelProvider,
+        diarization: DiarizationService,
     ):
-        self.model_manager = model_manager if model_manager is not None else WhisperModelProvider(WhisperModelConfig())
-        # Loaded lazily on first diarize() so workers that never diarize don't pin a pipeline to the GPU.
-        self.diarization = diarization if diarization is not None else DiarizationService()
+        self.model_manager = model_manager
+        # DiarizationService loads its pipeline lazily on first diarize() so workers that
+        # never diarize don't pin a pipeline to the GPU.
+        self.diarization = diarization
 
     def warmup(self, warm_diarization: bool = True) -> None:
         """Load models into VRAM at worker startup so the first request is fast.

@@ -1,8 +1,9 @@
 import pytest
 import torch
 
-from bentoml_faster_whisper.config import WhisperModelConfig
+from bentoml_faster_whisper.config import WhisperModelConfig, faster_whisper_config
 from bentoml_faster_whisper.service import FasterWhisper
+from bentoml_faster_whisper.services.diarization_service import DiarizationService
 from bentoml_faster_whisper.services.faster_whisper_handler import FasterWhisperHandler
 from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
 
@@ -23,14 +24,12 @@ torch.load = _patched_torch_load  # ty: ignore[invalid-assignment]
 def model_manager():
     """One resident large-v2 copy for the whole suite. The provider never unloads,
     so there are no non-daemon unload timers to block interpreter shutdown."""
-    return WhisperModelProvider(WhisperModelConfig())
+    return WhisperModelProvider(WhisperModelConfig(), faster_whisper_config.default_model_name)
 
 
 @pytest.fixture(scope="session")
 def handler(model_manager) -> FasterWhisperHandler:
-    handler = FasterWhisperHandler()
-    handler.model_manager = model_manager
-    return handler
+    return FasterWhisperHandler(model_manager=model_manager, diarization=DiarizationService())
 
 
 @pytest.fixture(scope="session")

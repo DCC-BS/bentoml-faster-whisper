@@ -25,13 +25,9 @@ WhisperResponse = (
 
 class ModelObject(BaseModel):
     id: str
-    """The model identifier, which can be referenced in the API endpoints."""
     created: int
-    """The Unix timestamp (in seconds) when the model was created."""
     object_: Literal["model"] = Field(serialization_alias="object")
-    """The object type, which is always "model"."""
     owned_by: str
-    """The organization that owns the model."""
     language: list[str] = Field(default_factory=list)
     """List of ISO 639-3 supported by the model. It's possible that the list will be empty. This field is not a part of the OpenAI API spec and is added for convenience."""  # noqa: E501
 
