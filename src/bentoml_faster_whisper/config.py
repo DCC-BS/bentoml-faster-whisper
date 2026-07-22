@@ -36,7 +36,16 @@ class WhisperModelConfig(BaseModel):
     # keep DEFAULT since int8_float16 is a CUDA compute type.
     compute_type: Quantization = Quantization.INT8_FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
     cpu_threads: int = 0
-    num_workers: int = 1
+    # CTranslate2 parallel worker replicas, and equivalently the number of decode runs transcribed
+    # concurrently per request. The diarized path cuts the file into many bounded decode runs (~60s
+    # each); with >1 worker they decode concurrently instead of one-at-a-time. An autoregressive
+    # Whisper decode is latency-bound (batch=1, one token at a time) and leaves the GPU underused, so
+    # overlapping several runs cuts decode wall-time ~1.8x on a 25-min file (52s -> 29s) with
+    # byte-identical output — it is the *same* sequential decode per run, just parallelised, so there
+    # is no quality change (unlike window-batching, which loses per-window context). 4 saturates this
+    # GPU (8 gives no further gain); a bigger GPU (e.g. H100) can go higher. Weights are shared across
+    # workers; the extra VRAM is modest and well within budget. Override with WHISPER_NUM_WORKERS.
+    num_workers: int = Field(default_factory=lambda: int(os.getenv("WHISPER_NUM_WORKERS", "4")))
 
 
 class FasterWhisperConfig(BaseModel):

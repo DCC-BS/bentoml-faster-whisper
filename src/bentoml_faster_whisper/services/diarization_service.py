@@ -131,9 +131,14 @@ class DiarizationService:
         self.pipeline: Pipeline | None = None
         # Guards both lazy loading and inference: a pyannote pipeline is not thread-safe.
         self._lock = threading.Lock()
-        # Lower batch sizes to reduce peak GPU activation memory on large files / tight GPUs.
-        self._segmentation_batch_size = positive_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 4, int)
-        self._embedding_batch_size = positive_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 4, int)
+        # pyannote speaker-diarization-community-1 already batches segmentation/embedding at 32 by
+        # default; keep that (it is the measured sweet spot — the embedding step is ~70% of
+        # diarization time and lowering the batch only slows it, with no VRAM pressure inside our
+        # budget). Kept overridable for tight GPUs. Set on the pipeline directly, not on
+        # ``pipeline._models`` (a different attribute pyannote never reads — the previous code set it
+        # there and so silently did nothing).
+        self._segmentation_batch_size = positive_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 32, int)
+        self._embedding_batch_size = positive_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 32, int)
 
     @log_exceptions
     def load(self):
@@ -160,12 +165,12 @@ class DiarizationService:
             _version = getattr(_pyannote_audio, "__version__", "unknown")
             logger.info("pyannote.audio loaded", version=_version)
             try:
-                pipeline._models.segmentation_batch_size = self._segmentation_batch_size  # type: ignore
-                pipeline._models.embedding_batch_size = self._embedding_batch_size  # type: ignore
+                pipeline.segmentation_batch_size = self._segmentation_batch_size  # type: ignore[attr-defined]
+                pipeline.embedding_batch_size = self._embedding_batch_size  # type: ignore[attr-defined]
             except AttributeError:
                 logger.warning(
-                    "pipeline._models batch-size attributes not found; private API may have "
-                    "changed — batch sizes not configured",
+                    "pipeline batch-size attributes not found; pyannote API may have changed — "
+                    "batch sizes not configured",
                     version=_version,
                 )
 

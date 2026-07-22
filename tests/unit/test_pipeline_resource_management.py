@@ -175,5 +175,7 @@ def test_diarization_batch_sizes_from_env(monkeypatch):
 def test_diarization_batch_sizes_default():
     svc = DiarizationService()
 
-    assert svc._segmentation_batch_size == 4
-    assert svc._embedding_batch_size == 4
+    # pyannote community-1 already batches at 32 by default; we keep that (the old default of 4 was
+    # set on the wrong attribute and never took effect).
+    assert svc._segmentation_batch_size == 32
+    assert svc._embedding_batch_size == 32
