@@ -12,7 +12,12 @@ class ProgressHandler:
         self._lock = threading.Lock()
 
     def _set_locked(self, id: str, progress: ProgressResponse) -> None:
-        """Stores progress and evicts the oldest entry past the cap. Caller must hold the lock."""
+        """Stores progress and evicts the least-recently-updated entry past the cap.
+        Caller must hold the lock."""
+        # Re-insert so the dict stays ordered by last update: a plain assignment to an
+        # existing key keeps its original position, which would let a long-running task
+        # that is actively reporting progress be evicted ahead of newer but idle entries.
+        self.progress_dict.pop(id, None)
         self.progress_dict[id] = progress
 
         if len(self.progress_dict) > _MAX_TRACKED_PROGRESS:

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-import subprocess
-from pathlib import Path
 from typing import TYPE_CHECKING, Callable, TypeVar
 
 from pydantic import BaseModel
@@ -37,33 +34,6 @@ def positive_env(name: str, default: _NumberT, cast: Callable[[str], _NumberT]) 
         logger.warning("Env var must be > 0; using default", name=name, value=value, default=default)
         return default
     return value
-
-
-def get_audio_duration(file: Path) -> float:
-    """Gets the duration of an audio file in seconds.
-
-    Uses ffprobe to read container metadata only, avoiding decoding the whole file into RAM just for a metric.
-    """
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "json",
-                str(file),
-            ],
-            check=True,
-            capture_output=True,
-            timeout=30,
-        )
-        return float(json.loads(result.stdout)["format"]["duration"])
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, KeyError, ValueError) as e:
-        logger.warning("ffprobe duration probe failed", file=str(file), error=str(e))
-        return 0.0
 
 
 class Word(BaseModel):

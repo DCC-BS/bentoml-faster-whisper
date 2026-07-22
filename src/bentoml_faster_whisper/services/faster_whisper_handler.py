@@ -47,6 +47,26 @@ def _strip_words(segments: Iterable[Segment]) -> Iterable[Segment]:
         yield seg
 
 
+def _language_mass(runs: list[tuple[str, list[tuple[float, float]]]]) -> dict[str, float]:
+    """Speech time each language covers, summed across all decode runs.
+
+    Summed per language, not taken from the single longest run: ``turns_to_language_runs``
+    caps each run at ``MAX_RUN_S``, so a majority language spanning a long stretch is
+    fragmented into several runs. Picking the longest individual run would then let a
+    minority language that happens to sit in one long turn outweigh it.
+    """
+    mass: dict[str, float] = {}
+    for language, run_intervals in runs:
+        mass[language] = mass.get(language, 0.0) + sum(end - start for start, end in run_intervals)
+    return mass
+
+
+def _majority_run_language(runs: list[tuple[str, list[tuple[float, float]]]]) -> str:
+    """The language covering the most speech time across all decode runs."""
+    mass = _language_mass(runs)
+    return max(mass, key=mass.__getitem__)
+
+
 class FasterWhisperHandler:
     def __init__(
         self,
@@ -119,7 +139,12 @@ class FasterWhisperHandler:
                 **decode_options,
             )
             segments = Segment.from_faster_whisper_segments(segments)
-            response = segments_to_response(segments, transcription_info, request.response_format)
+            # Apply the same hallucination/silence filtering and normalization as the
+            # transcription paths so a translation isn't the one endpoint that leaks
+            # blacklisted subtitle artefacts and no-speech segments. The translate task always
+            # emits English, so hallucinations match the English blacklist, not the source language.
+            cleaned = clean_transcription_segments(segments, transcription_info, text_language="en")
+            response = segments_to_response(cleaned, transcription_info, request.response_format)
         except Exception as e:
             metrics.record_failure("decode", e)
             raise
@@ -322,32 +347,74 @@ class FasterWhisperHandler:
         ``tag_language`` stamps each segment with its run's language; the single-
         language path leaves it off, since per-segment language is only reported when
         it was auto-detected per region."""
-        runs = []
-        for language, run_intervals in turns_to_language_runs(turns, resolved):
+        runs = turns_to_language_runs(turns, resolved)
+
+        def decode_run(language: str, run_intervals: list[tuple[float, float]]):
             run_collapsed = collapse_decoded_to_speech(decoded, run_intervals)
             if run_collapsed is None:
-                continue
+                return None
             run_audio, run_chunks = run_collapsed
             fw_segments, info = whisper.transcribe(run_audio, language=language, vad_filter=False, **decode_options)
             restored = restore_and_split_segments(fw_segments, run_chunks, run_intervals, original_duration_s)
-            runs.append((language, run_intervals, info, restored))
+            return info, restored
 
-        if not runs:
+        # Decode only the first run eagerly — enough to obtain a TranscriptionInfo to return
+        # synchronously; the remaining runs are decoded lazily as the generator below is consumed,
+        # so at most one run's mel/audio buffers are resident at a time. A long file can split into
+        # dozens of runs; extracting every run's features up front (whisper.transcribe extracts
+        # eagerly) pinned them all at once, memory growing with file length.
+        template_info = None
+        first_index: int | None = None
+        first_restored: list[Segment] = []
+        for index, (language, run_intervals) in enumerate(runs):
+            decoded_run = decode_run(language, run_intervals)
+            if decoded_run is None:
+                continue
+            template_info, restored = decoded_run
+            first_restored = list(restored)
+            first_index = index
+            break
+
+        if template_info is None:
             # Reachable only if every run's intervals collapse to no decodable audio (e.g. all
             # clamped past the decoded length near EOF). has_speech upstream makes this practically
-            # impossible; guard so it surfaces as a clear decode error instead of max()'s opaque one.
+            # impossible; guard so it surfaces as a clear decode error instead of an opaque one.
             raise RuntimeError("no decodable speech runs after collapsing diarization turns")
 
-        # The response carries a single top-level language: the one covering the most
-        # speech time. Per-segment languages preserve the rest.
-        majority_language, _, majority_info, _ = max(runs, key=lambda run: sum(end - start for start, end in run[1]))
+        # The synthesized top-level info describes the whole multilingual file, not the single run
+        # that happened to decode first: language is the one covering the most speech, its
+        # probability is that language's share of total speech time, and all_language_probs is the
+        # full per-language split. template_info only supplies the run-invariant fields (decode and
+        # vad options); carrying its language_probability/all_language_probs would report a
+        # confidence for whichever language decoded first, not for the reported majority language.
+        mass = _language_mass(runs)
+        majority_language = max(mass, key=mass.__getitem__)
+        total_mass = sum(mass.values())
+        all_language_probs = (
+            sorted(((lang, m / total_mass) for lang, m in mass.items()), key=lambda item: item[1], reverse=True)
+            if total_mass
+            else None
+        )
         transcription_info = dataclasses.replace(
-            majority_info, language=majority_language, duration=original_duration_s
+            template_info,
+            language=majority_language,
+            language_probability=mass[majority_language] / total_mass if total_mass else 0.0,
+            all_language_probs=all_language_probs,
+            duration=original_duration_s,
         )
 
         def tagged_segments() -> Iterable[Segment]:
             next_id = 0
-            for language, _, _, restored in runs:
+            # Runs before first_index collapsed to no decodable audio; the run at first_index is
+            # already decoded (first_restored), the rest are decoded lazily here.
+            for offset, (language, run_intervals) in enumerate(runs[first_index:]):
+                if offset == 0:
+                    restored: Iterable[Segment] = first_restored
+                else:
+                    decoded_run = decode_run(language, run_intervals)
+                    if decoded_run is None:
+                        continue
+                    _, restored = decoded_run
                 for segment in restored:
                     segment.id = next_id
                     next_id += 1

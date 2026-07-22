@@ -15,7 +15,6 @@ from bentoml_faster_whisper.models.transcription_request import TranscriptionReq
 from bentoml_faster_whisper.services.diarization_service import DiarizationService
 from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
 from bentoml_faster_whisper.services.progress_handler import ProgressHandler
-from bentoml_faster_whisper.utils.core import get_audio_duration
 
 SHORT_AUDIO = Path("./tests/assets/example_audio.mp3")
 LONG_AUDIO = Path("./tests/assets/long_example_audio.mp3")
@@ -109,6 +108,30 @@ def test_progress_handler_instances_are_isolated():
     assert "task-a" not in b.progress_dict, "progress state must not leak across instances"
 
 
+def test_active_task_survives_eviction_by_newer_registrations(monkeypatch):
+    """A long-running task that keeps reporting progress must not be evicted ahead of
+    newer but idle entries once the tracking cap is exceeded."""
+    from bentoml_faster_whisper.services import progress_handler as progress_module
+    from bentoml_faster_whisper.models.progress_response import ProgressResponse
+
+    monkeypatch.setattr(progress_module, "_MAX_TRACKED_PROGRESS", 3)
+    handler = ProgressHandler()
+
+    handler.add_progress("long-running")
+    handler.add_progress("a")
+    handler.add_progress("b")
+
+    # The long-running task reports progress, so it is the most-recently-updated entry.
+    handler.update_progress("long-running", ProgressResponse(progress=0.5, currentTime=1, duration=2))
+
+    # Registering another task exceeds the cap: the least-recently-updated ("a") is evicted.
+    handler.add_progress("c")
+
+    assert handler.get_progress("long-running").progress == 0.5
+    assert "long-running" in handler.progress_dict
+    assert "a" not in handler.progress_dict
+
+
 @pytest.mark.model
 def test_task_transcribe_removes_progress_entry(service):
     progress_id = "resource-mgmt-test"
@@ -154,14 +177,3 @@ def test_diarization_batch_sizes_default():
 
     assert svc._segmentation_batch_size == 4
     assert svc._embedding_batch_size == 4
-
-
-def test_get_audio_duration_matches_ffprobe():
-    duration = get_audio_duration(LONG_AUDIO)
-
-    # long_example_audio.mp3 is ~96.4s.
-    assert duration == pytest.approx(96.4, abs=1.0)
-
-
-def test_get_audio_duration_missing_file_returns_zero():
-    assert get_audio_duration(Path("/does/not/exist.mp3")) == 0.0
