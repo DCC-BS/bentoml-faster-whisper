@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Load and E2E Performance Test Suite for bentoml-faster-whisper.
 
-Measures single-request latency, Real-Time Factor (RTF), and multi-concurrent
-request throughput/percentile latencies using long test audio assets.
-Saves structured JSON & CSV benchmarks to track performance across settings.
+Measures single-request latency, Real-Time Factor (RTF), Speedup Factor, CPU %,
+GPU Compute Utilization %, Peak VRAM (MB), and multi-concurrent request
+throughput/percentile latencies using long test audio assets.
+
+Saves structured JSON benchmarks to track performance gains across implementation iterations.
 """
 
 import argparse
@@ -12,6 +14,7 @@ import json
 import logging
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -19,12 +22,15 @@ from typing import Any
 
 import av
 import numpy as np
+import psutil
 
 # Add src/ to python path if running standalone
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+
+import torch
 
 from bentoml_faster_whisper.models.enums import ResponseFormat
 from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
@@ -43,8 +49,87 @@ DEFAULT_LONG_AUDIO = (
 DEFAULT_RADIO_AUDIO = DEFAULT_LONG_AUDIO
 
 
+class SystemMonitor:
+    """Background sampling thread for CPU %, GPU compute %, and GPU VRAM usage."""
+
+    def __init__(self, sample_interval_s: float = 0.5):
+        self.interval = sample_interval_s
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.cpu_samples: list[float] = []
+        self.gpu_util_samples: list[float] = []
+        self.vram_used_samples: list[float] = []
+        self.vram_total_mb: float = 0.0
+
+    def _query_gpu(self) -> tuple[float, float]:
+        """Query GPU compute utilization (%) and VRAM used (MB) via nvidia-smi."""
+        try:
+            cmd = [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ]
+            out = subprocess.check_output(cmd, text=True, timeout=1.0).strip()
+            lines = out.splitlines()
+            if lines:
+                parts = [p.strip() for p in lines[0].split(",")]
+                gpu_util = float(parts[0])
+                vram_used = float(parts[1])
+                self.vram_total_mb = float(parts[2])
+                return gpu_util, vram_used
+        except Exception:
+            pass
+        return 0.0, 0.0
+
+    def _monitor_loop(self):
+        psutil.cpu_percent(interval=None)  # prime psutil CPU
+        while not self._stop_event.is_set():
+            cpu = psutil.cpu_percent(interval=None)
+            gpu_util, vram_used = self._query_gpu()
+            self.cpu_samples.append(cpu)
+            if gpu_util > 0 or vram_used > 0:
+                self.gpu_util_samples.append(gpu_util)
+                self.vram_used_samples.append(vram_used)
+            time.sleep(self.interval)
+
+    def start(self):
+        self.cpu_samples.clear()
+        self.gpu_util_samples.clear()
+        self.vram_used_samples.clear()
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> dict[str, float]:
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+
+        # Also check PyTorch peak VRAM allocator if available
+        torch_vram_mb = 0.0
+        if torch.cuda.is_available():
+            try:
+                torch_vram_mb = float(torch.cuda.max_memory_allocated() / (1024**2))
+            except Exception:
+                pass
+
+        avg_cpu = float(np.mean(self.cpu_samples)) if self.cpu_samples else 0.0
+        avg_gpu = float(np.mean(self.gpu_util_samples)) if self.gpu_util_samples else 0.0
+        peak_vram = max(
+            max(self.vram_used_samples) if self.vram_used_samples else 0.0,
+            torch_vram_mb,
+        )
+
+        return {
+            "avg_cpu_pct": round(avg_cpu, 1),
+            "avg_gpu_util_pct": round(avg_gpu, 1),
+            "peak_vram_mb": round(peak_vram, 1),
+            "vram_total_mb": round(self.vram_total_mb, 1),
+        }
+
+
 def get_audio_duration_seconds(audio_path: Path) -> float:
-    """Get exact duration in seconds of an audio file using PyAV or soundfile fallback."""
+    """Get exact duration in seconds of an audio file using PyAV or fallback."""
     try:
         with av.open(str(audio_path)) as container:
             stream = container.streams.audio[0]
@@ -66,6 +151,15 @@ def get_git_commit_hash() -> str:
         return "unknown"
 
 
+def reset_peak_vram_stats():
+    """Reset CUDA peak memory stats if CUDA is available."""
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.reset_peak_memory_stats()
+        except Exception:
+            pass
+
+
 def run_single_request_in_process(
     service: Any,
     audio_path: Path,
@@ -81,7 +175,11 @@ def run_single_request_in_process(
     request = TranscriptionRequest.model_validate(req_dict)
     params = request.model_dump()
 
+    reset_peak_vram_stats()
+    monitor = SystemMonitor()
+    monitor.start()
     start_time = time.perf_counter()
+
     success = True
     error_msg = None
     transcript_len = 0
@@ -100,8 +198,13 @@ def run_single_request_in_process(
         logger.error("Request failed: %s", e)
 
     latency_s = time.perf_counter() - start_time
+    sys_stats = monitor.stop()
+
     return {
         "latency_s": latency_s,
+        "avg_cpu_pct": sys_stats["avg_cpu_pct"],
+        "avg_gpu_util_pct": sys_stats["avg_gpu_util_pct"],
+        "peak_vram_mb": sys_stats["peak_vram_mb"],
         "success": success,
         "error": error_msg,
         "transcript_len": transcript_len,
@@ -123,6 +226,8 @@ def run_single_request_http(
         "response_format": response_format,
     }
 
+    monitor = SystemMonitor()
+    monitor.start()
     start_time = time.perf_counter()
     success = True
     error_msg = None
@@ -141,8 +246,13 @@ def run_single_request_http(
         error_msg = str(e)
 
     latency_s = time.perf_counter() - start_time
+    sys_stats = monitor.stop()
+
     return {
         "latency_s": latency_s,
+        "avg_cpu_pct": sys_stats["avg_cpu_pct"],
+        "avg_gpu_util_pct": sys_stats["avg_gpu_util_pct"],
+        "peak_vram_mb": sys_stats["peak_vram_mb"],
         "success": success,
         "error": error_msg,
         "transcript_len": transcript_len,
@@ -157,7 +267,7 @@ def run_concurrency_batch(
     total_requests: int,
     diarization: bool,
 ) -> dict[str, Any]:
-    """Run a batch of concurrent requests and compute aggregated latency & throughput metrics."""
+    """Run a batch of concurrent requests and compute aggregated latency, throughput & system metrics."""
     logger.info(
         "Starting concurrency batch: concurrency=%d, total_requests=%d, diarization=%s",
         concurrency,
@@ -165,6 +275,9 @@ def run_concurrency_batch(
         diarization,
     )
 
+    reset_peak_vram_stats()
+    monitor = SystemMonitor()
+    monitor.start()
     batch_start = time.perf_counter()
     results = []
 
@@ -179,6 +292,8 @@ def run_concurrency_batch(
             results.append(future.result())
 
     batch_duration_s = time.perf_counter() - batch_start
+    sys_stats = monitor.stop()
+
     latencies = [r["latency_s"] for r in results if r["success"]]
     failures = [r for r in results if not r["success"]]
 
@@ -201,6 +316,9 @@ def run_concurrency_batch(
         "failed_requests": len(failures),
         "total_batch_duration_s": batch_duration_s,
         "throughput_req_per_sec": throughput_req_per_sec,
+        "avg_cpu_pct": sys_stats["avg_cpu_pct"],
+        "avg_gpu_util_pct": sys_stats["avg_gpu_util_pct"],
+        "peak_vram_mb": sys_stats["peak_vram_mb"],
         "latency_stats": {
             "mean_s": mean_latency,
             "p50_s": p50_latency,
@@ -213,13 +331,67 @@ def run_concurrency_batch(
     }
 
 
+def print_performance_gains_comparison(history: list[dict[str, Any]]):
+    """Print comparative table highlighting performance gains between earliest baseline and latest run."""
+    if len(history) < 2:
+        return
+
+    baseline_session = history[0]
+    current_session = history[-1]
+
+    baseline_runs = {
+        (r.get("mode"), r.get("test_type"), r.get("concurrency", 1)): r for r in baseline_session.get("results", [])
+    }
+    current_runs = {
+        (r.get("mode"), r.get("test_type"), r.get("concurrency", 1)): r for r in current_session.get("results", [])
+    }
+
+    print("\n" + "=" * 115)
+    print(
+        f"PERFORMANCE GAINS COMPARISON (Baseline [{baseline_session.get('git_commit')}] vs Latest [{current_session.get('git_commit')}])"
+    )
+    print("=" * 115)
+    print(
+        f"{'Mode':<18} | {'Test Type':<15} | {'Concurrency':<11} | {'Baseline Lat.':<13} | {'Latest Lat.':<13} | {'Latency Δ':<12} | {'Speedup Gain':<13} | {'CPU % Δ':<8}"
+    )
+    print("-" * 115)
+
+    for key, curr in current_runs.items():
+        base = baseline_runs.get(key)
+        if not base:
+            continue
+        mode, test_type, c = key
+        label_type = "Single (C=1)" if test_type == "single_request_baseline" else f"Batch (C={c})"
+        base_lat = base.get("mean_latency_s", base.get("latency_s", 0.0))
+        curr_lat = curr.get("mean_latency_s", curr.get("latency_s", 0.0))
+
+        if base_lat > 0 and curr_lat > 0:
+            lat_delta_pct = ((curr_lat - base_lat) / base_lat) * 100.0
+            speedup_mult = base_lat / curr_lat
+            lat_delta_str = f"{lat_delta_pct:+.1f}%"
+            speedup_str = f"{speedup_mult:.2f}x faster"
+        else:
+            lat_delta_str = "N/A"
+            speedup_str = "N/A"
+
+        base_cpu = base.get("avg_cpu_pct", 0.0)
+        curr_cpu = curr.get("avg_cpu_pct", 0.0)
+        cpu_str = f"{curr_cpu - base_cpu:+.1f}%" if base_cpu > 0 else "N/A"
+
+        print(
+            f"{mode:<18} | {label_type:<15} | {c:<11} | {base_lat:<13.2f}s | {curr_lat:<13.2f}s | {lat_delta_str:<12} | {speedup_str:<13} | {cpu_str:<8}"
+        )
+
+    print("=" * 115 + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Load and Performance Benchmark Test Suite")
     parser.add_argument(
         "--audio",
         type=str,
         default=str(DEFAULT_LONG_AUDIO),
-        help="Path to audio file (default: long_example_audio.mp3)",
+        help="Path to audio file (default: long radio audio)",
     )
     parser.add_argument(
         "--url",
@@ -287,7 +459,7 @@ def main():
         mode_str = "with_diarization" if diarization else "without_diarization"
         logger.info("=== Running Benchmark Mode: %s ===", mode_str)
 
-        # 1. Warmup / Single Request Baseline Test
+        # 1. Single Request Baseline Test (1 isolated request)
         logger.info("Executing Single Request Baseline Test (%s)...", mode_str)
         if is_http:
             baseline_result = run_single_request_http(service_or_url, audio_path, diarization=diarization)
@@ -295,10 +467,15 @@ def main():
             baseline_result = run_single_request_in_process(service_or_url, audio_path, diarization=diarization)
 
         rtf = (baseline_result["latency_s"] / audio_duration_s) if audio_duration_s > 0 else 0.0
+        speedup = (audio_duration_s / baseline_result["latency_s"]) if baseline_result["latency_s"] > 0 else 0.0
         logger.info(
-            "Baseline Single Request Latency: %.3fs | Real-Time Factor (RTF): %.3fx (Lower is faster)",
+            "Baseline Single Request Latency: %.3fs | RTF: %.3fx (lower=faster) | Speedup: %.2fx (higher=faster) | CPU: %.1f%% | GPU: %.1f%% | VRAM: %.1fMB",
             baseline_result["latency_s"],
             rtf,
+            speedup,
+            baseline_result.get("avg_cpu_pct", 0.0),
+            baseline_result.get("avg_gpu_util_pct", 0.0),
+            baseline_result.get("peak_vram_mb", 0.0),
         )
 
         single_run_summary = {
@@ -307,13 +484,18 @@ def main():
             "test_type": "single_request_baseline",
             "audio_file": audio_path.name,
             "audio_duration_s": audio_duration_s,
+            "concurrency": 1,
             "latency_s": baseline_result["latency_s"],
             "real_time_factor_rtf": rtf,
+            "speedup_factor": speedup,
+            "avg_cpu_pct": baseline_result.get("avg_cpu_pct", 0.0),
+            "avg_gpu_util_pct": baseline_result.get("avg_gpu_util_pct", 0.0),
+            "peak_vram_mb": baseline_result.get("peak_vram_mb", 0.0),
             "success": baseline_result["success"],
         }
         benchmark_runs.append(single_run_summary)
 
-        # 2. Multi Concurrent Request Load Tests
+        # 2. Multi Concurrent Request Load Tests (Batch of N requests)
         for c in args.concurrency:
             total_reqs = max(c, args.requests_per_level)
             batch_metrics = run_concurrency_batch(
@@ -325,8 +507,9 @@ def main():
                 diarization=diarization,
             )
 
-            # Compute effective concurrent RTF
-            batch_rtf = (batch_metrics["latency_stats"]["mean_s"] / audio_duration_s) if audio_duration_s > 0 else 0.0
+            mean_lat = batch_metrics["latency_stats"]["mean_s"]
+            batch_rtf = (mean_lat / audio_duration_s) if audio_duration_s > 0 else 0.0
+            batch_speedup = (audio_duration_s / mean_lat) if mean_lat > 0 else 0.0
 
             batch_summary = {
                 "mode": mode_str,
@@ -339,11 +522,15 @@ def main():
                 "successful_requests": batch_metrics["successful_requests"],
                 "failed_requests": batch_metrics["failed_requests"],
                 "throughput_req_per_sec": batch_metrics["throughput_req_per_sec"],
-                "mean_latency_s": batch_metrics["latency_stats"]["mean_s"],
+                "mean_latency_s": mean_lat,
                 "p50_latency_s": batch_metrics["latency_stats"]["p50_s"],
                 "p90_latency_s": batch_metrics["latency_stats"]["p90_s"],
                 "p99_latency_s": batch_metrics["latency_stats"]["p99_s"],
                 "real_time_factor_rtf": batch_rtf,
+                "speedup_factor": batch_speedup,
+                "avg_cpu_pct": batch_metrics.get("avg_cpu_pct", 0.0),
+                "avg_gpu_util_pct": batch_metrics.get("avg_gpu_util_pct", 0.0),
+                "peak_vram_mb": batch_metrics.get("peak_vram_mb", 0.0),
             }
             benchmark_runs.append(batch_summary)
 
@@ -362,7 +549,6 @@ def main():
     }
 
     output_file = Path(args.output).resolve()
-    # Read existing results if tracking file exists to append history
     history = []
     if output_file.exists():
         try:
@@ -383,21 +569,31 @@ def main():
     logger.info("Successfully wrote load test results to %s", output_file)
 
     # Print clean summary table to stdout
-    print("\n" + "=" * 85)
+    print("\n" + "=" * 125)
     print(f"LOAD TEST SUMMARY RESULT ({audio_path.name}, duration: {audio_duration_s:.1f}s)")
-    print("=" * 85)
+    print("=" * 125)
     print(
-        f"{'Mode':<20} | {'Concurrency':<12} | {'Mean Latency':<12} | {'P90 Latency':<12} | {'Throughput':<12} | {'RTF':<8}"
+        f"{'Mode':<18} | {'Test Type':<15} | {'Concurrency':<11} | {'Mean Latency':<12} | {'P90 Latency':<12} | {'Throughput':<12} | {'RTF (↓)':<8} | {'Speedup (↑)':<10} | {'CPU %':<7} | {'GPU %':<7} | {'VRAM (MB)':<9}"
     )
-    print("-" * 85)
+    print("-" * 125)
     for run in benchmark_runs:
+        t_type = "Single Baseline" if run.get("test_type") == "single_request_baseline" else "Batch Load Test"
         c_str = str(run.get("concurrency", 1))
         lat_str = f"{run.get('mean_latency_s', run.get('latency_s', 0)):.2f}s"
         p90_str = f"{run.get('p90_latency_s', 0):.2f}s" if "p90_latency_s" in run else "N/A"
         tp_str = f"{run.get('throughput_req_per_sec', 0):.2f} req/s" if "throughput_req_per_sec" in run else "N/A"
         rtf_str = f"{run.get('real_time_factor_rtf', 0):.3f}x"
-        print(f"{run['mode']:<20} | {c_str:<12} | {lat_str:<12} | {p90_str:<12} | {tp_str:<12} | {rtf_str:<8}")
-    print("=" * 85 + "\n")
+        sp_str = f"{run.get('speedup_factor', 0):.2f}x"
+        cpu_str = f"{run.get('avg_cpu_pct', 0.0):.1f}%"
+        gpu_str = f"{run.get('avg_gpu_util_pct', 0.0):.1f}%"
+        vram_str = f"{run.get('peak_vram_mb', 0.0):.0f}"
+        print(
+            f"{run['mode']:<18} | {t_type:<15} | {c_str:<11} | {lat_str:<12} | {p90_str:<12} | {tp_str:<12} | {rtf_str:<8} | {sp_str:<10} | {cpu_str:<7} | {gpu_str:<7} | {vram_str:<9}"
+        )
+    print("=" * 125 + "\n")
+
+    # Print comparative performance gains table against baseline run
+    print_performance_gains_comparison(history)
 
 
 if __name__ == "__main__":

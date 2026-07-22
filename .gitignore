@@ -161,6 +161,10 @@ cython_debug/
 #.idea/
 
 grafana_data/
+eval_results/
+eval_data/
+*.eval.csv
+*.eval.json
 
 !/.github/workflows/
 !/.github/workflows/*.yml

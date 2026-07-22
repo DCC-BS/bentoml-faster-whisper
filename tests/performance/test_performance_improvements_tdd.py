@@ -23,6 +23,10 @@ import pytest
 import torch
 from bentoml.exceptions import InvalidArgument
 
+# Only marked as 'performance' - strictly isolated from 'unit' and 'integration' test targets!
+pytestmark = pytest.mark.performance
+
+
 from bentoml_faster_whisper.config import FasterWhisperConfig, WhisperModelConfig
 from bentoml_faster_whisper.service import FasterWhisper, fastapi
 from bentoml_faster_whisper.services.diarization_service import DiarizationService

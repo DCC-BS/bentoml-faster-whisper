@@ -16,17 +16,18 @@ check: ## Run code quality tools.
 .PHONY: test
 test: ## Test the code with pytest (fast unit tests, no model loaded)
 	@echo "🚀 Testing code: Running pytest"
-	@uv run --env-file .env python -m pytest -m "not integration and not model"
+	@uv run --env-file .env python -m pytest -m "not integration and not model and not performance"
 
 .PHONY: test-model
 test-model: ## Run the unit tests that load a real Whisper model (slow, needs a GPU)
 	@echo "🚀 Testing code: Running model-backed unit tests"
-	@uv run --env-file .env python -m pytest -m "model and not integration"
+	@uv run --env-file .env python -m pytest -m "model and not integration and not performance"
 
 .PHONY: test-all
 test-all: ## Run every unit test, model-backed ones included
 	@echo "🚀 Testing code: Running all unit tests"
-	@uv run --env-file .env python -m pytest -m "not integration"
+	@uv run --env-file .env python -m pytest -m "not integration and not performance"
+
 
 .PHONY: integration
 integration: ## Run integration tests (excluding performance load tests)
@@ -34,9 +35,22 @@ integration: ## Run integration tests (excluding performance load tests)
 	@uv run --env-file .env python -m pytest -m "integration and not performance"
 
 .PHONY: performance
-performance: ## Run load and performance benchmark tests (records tracking metrics to load_test_results.json)
-	@echo "🚀 Testing code: Running load & performance tests"
+performance: ## Run E2E load test benchmark tool (records tracking metrics to load_test_results.json)
+	@echo "🚀 Running E2E load test benchmark tool"
 	@uv run --env-file .env python tools/load_test.py
+
+.PHONY: test-performance
+test-performance: ## Run performance pytest suite
+	@echo "🚀 Running performance pytest suite"
+	@uv run --env-file .env python -m pytest -m performance
+
+.PHONY: eval-quality
+eval-quality: ## Run quality evaluation (WER, CER, BLEU) against curated test suite in /home/yanick/code/research/whisper-evaluation
+	@echo "🚀 Running quality evaluation against curated test suite"
+	@uv run --env-file .env python tools/eval_quality.py
+
+
+
 
 
 .PHONY: docker-build

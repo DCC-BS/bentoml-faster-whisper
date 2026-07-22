@@ -1,8 +1,9 @@
-"""Integration Load and Performance Test Suite.
+"""Performance Load Test Suite.
 
 Executes end-to-end performance measurements on long audio assets from tests/assets/
 for single requests and multi-concurrent requests (with and without diarization).
 Writes structured tracking results into load_test_results.json.
+Only executed when explicitly running 'make performance' or 'pytest -m performance'.
 """
 
 import json
@@ -17,6 +18,7 @@ from tools.load_test import (
     run_single_request_in_process,
 )
 
+# Only marked as 'performance' - strictly isolated from 'integration' and 'unit' tests!
 pytestmark = pytest.mark.performance
 
 
@@ -33,7 +35,7 @@ def radio_audio_path() -> Path:
 
 
 def test_single_request_performance_measurement(faster_whisper_service, long_audio_path):
-    """Measure single request latency and Real-Time Factor (RTF) on long audio."""
+    """Measure single request latency, RTF, and Speedup on long audio."""
     duration_s = get_audio_duration_seconds(long_audio_path)
     result = run_single_request_in_process(faster_whisper_service, long_audio_path, diarization=False)
 
@@ -41,9 +43,11 @@ def test_single_request_performance_measurement(faster_whisper_service, long_aud
     assert result["latency_s"] > 0
     assert result["transcript_len"] > 0
 
-    rtf = result["latency_s"] / duration_s if duration_s > 0 else 0
+    rtf = result["latency_s"] / duration_s if duration_s > 0 else 0.0
+    speedup = duration_s / result["latency_s"] if result["latency_s"] > 0 else 0.0
     print(
-        f"\n[Single Request Performance] Audio: {long_audio_path.name} | Duration: {duration_s:.1f}s | Latency: {result['latency_s']:.2f}s | RTF: {rtf:.3f}x"
+        f"\n[Single Request Performance] Audio: {long_audio_path.name} | Duration: {duration_s:.1f}s | "
+        f"Latency: {result['latency_s']:.2f}s | RTF: {rtf:.3f}x | Speedup: {speedup:.2f}x"
     )
 
 
