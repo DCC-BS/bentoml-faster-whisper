@@ -74,7 +74,6 @@ def main():
     logger.info("Output Directory: %s (Git-ignored)", OUTPUT_DIR)
     logger.info("==========================================================")
 
-    # Build command to invoke asr-eval via uv in the evaluation suite project
     cmd = [
         "uv",
         "run",

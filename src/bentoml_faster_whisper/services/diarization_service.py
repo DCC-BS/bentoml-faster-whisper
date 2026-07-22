@@ -18,8 +18,6 @@ from bentoml_faster_whisper.utils.logger import get_logger, log_exceptions
 
 logger = get_logger(__name__)
 
-# Ordered weights for the pyannote speaker-diarization steps (they fire in this order). "embeddings"
-# is the heavy GPU step that reports granular completed/total, so it gets the bulk of the band.
 _DIARIZATION_STEP_WEIGHTS: dict[str, float] = {
     "segmentation": 0.15,
     "speaker_counting": 0.05,
@@ -29,9 +27,7 @@ _DIARIZATION_STEP_WEIGHTS: dict[str, float] = {
 
 
 class _DiarizationProgressHook:
-    """pyannote-compatible hook that maps internal diarization steps to a monotonic 0..1 fraction
-    and forwards it to ``on_progress``. Unknown steps are ignored and the value never decreases, so
-    reordered/extra steps from a future pyannote version degrade gracefully instead of breaking."""
+    """pyannote-compatible hook mapping internal diarization steps to a monotonic 0..1 fraction."""
 
     def __init__(self, on_progress: Callable[[float], None]) -> None:
         self._on_progress = on_progress
@@ -63,7 +59,7 @@ class _DiarizationProgressHook:
         within = clamp(within, 0.0, 1.0)
         fraction = min(self._base[step_name] + weight * within, 1.0)
         if fraction <= self._last:
-            return  # pyannote emits completed=0 first; never move backwards
+            return
         self._last = fraction
         self._on_progress(fraction)
 
@@ -83,11 +79,7 @@ class DiarizationSegment:
 
 
 def _is_16k_mono_wav(audio_path: str) -> bool:
-    """True only when the file is already 16 kHz mono, so it can go straight to
-    pyannote. A stereo or non-16 kHz .wav must still be resampled — pyannote expects
-    16 kHz mono, and feeding it raw multi-channel/off-rate audio yields wrong turn
-    boundaries or tensor errors. Any probe failure returns False so the caller falls
-    back to ffmpeg (which normalizes, or fails loudly on a truly corrupt file)."""
+    """Check if the audio file is already 16 kHz mono WAV."""
     try:
         with av.open(audio_path) as container:
             stream = container.streams.audio[0]
@@ -99,9 +91,7 @@ def _is_16k_mono_wav(audio_path: str) -> bool:
 
 @contextlib.contextmanager
 def _as_wav(audio_path: str) -> Iterator[str]:
-    # MP3/FLAC headers report duration imprecisely; convert to WAV so pyannote
-    # gets an exact sample count without loading the whole file into RAM. A .wav
-    # skips conversion only when it is already 16 kHz mono (see _is_16k_mono_wav).
+    """Context manager converting audio to 16 kHz mono WAV if necessary."""
     if Path(audio_path).suffix.lower() == ".wav" and _is_16k_mono_wav(audio_path):
         yield audio_path
         return
@@ -116,8 +106,6 @@ def _as_wav(audio_path: str) -> Iterator[str]:
                 capture_output=True,
             )
         except subprocess.CalledProcessError as e:
-            # A failed decode is a bad upload, not a server fault: surface it as a 4xx
-            # (InvalidArgument -> HTTP 400) instead of letting it bubble up as a 500.
             stderr = e.stderr.decode(errors="replace")
             logger.error("ffmpeg conversion failed", stderr=stderr)
             raise InvalidArgument("Failed to decode audio file") from e
@@ -129,27 +117,13 @@ def _as_wav(audio_path: str) -> Iterator[str]:
 class DiarizationService:
     def __init__(self) -> None:
         self.pipeline: Pipeline | None = None
-        # Guards both lazy loading and inference: a pyannote pipeline is not thread-safe.
         self._lock = threading.Lock()
-        # pyannote speaker-diarization-community-1 already batches segmentation/embedding at 32 by
-        # default; keep that (it is the measured sweet spot — the embedding step is ~70% of
-        # diarization time and lowering the batch only slows it, with no VRAM pressure inside our
-        # budget). Kept overridable for tight GPUs. Set on the pipeline directly, not on
-        # ``pipeline._models`` (a different attribute pyannote never reads — the previous code set it
-        # there and so silently did nothing).
         self._segmentation_batch_size = positive_env("DIARIZATION_SEGMENTATION_BATCH_SIZE", 32, int)
         self._embedding_batch_size = positive_env("DIARIZATION_EMBEDDING_BATCH_SIZE", 32, int)
 
     @log_exceptions
     def load(self):
-        """
-        Load the speaker diarization pipeline from the Hugging Face model hub.
-        The pipeline is sent to the GPU if available. Idempotent: safe to call
-        repeatedly. Loading is lazy at this level (only the first call actually
-        loads), but note that with WARMUP_ON_STARTUP=true (the default) the worker
-        pre-loads the pipeline during startup, so in that configuration the pin
-        happens eagerly rather than on the first diarization request.
-        """
+        """Load the speaker diarization pipeline from Hugging Face model hub."""
         with self._lock:
             if self.pipeline is not None:
                 return
@@ -194,7 +168,7 @@ class DiarizationService:
             raise ValueError("num_speaker must be a positive integer or None.")
 
         self.load()
-        assert self.pipeline is not None  # guaranteed by load()
+        assert self.pipeline is not None
 
         with _as_wav(audio_path) as wav_path:
             with self._lock:
@@ -205,13 +179,10 @@ class DiarizationService:
                     else:
                         output = self.pipeline(wav_path, num_speakers=num_speaker)
                 finally:
-                    # Return this run's activation blocks to the allocator for the Whisper model / next request.
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
 
         logger.info("Diarization completed")
 
-        # pyannote types __call__ loosely; the speaker-diarization pipeline returns an
-        # object carrying `speaker_diarization`, which the static union can't express.
         for turn, speaker in cast(Any, output).speaker_diarization:
             yield DiarizationSegment(turn, speaker)

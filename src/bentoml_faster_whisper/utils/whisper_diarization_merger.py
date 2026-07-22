@@ -120,17 +120,7 @@ def _majority_speaker(words: list, word_speakers: list[Optional[str]]) -> Option
     return max(duration, key=duration.__getitem__) if duration else None
 
 
-# A word only justifies cutting a segment when at least this fraction of its
-# duration lies inside its assigned diarization turn. Word timestamps jitter by
-# ~100-300ms around pyannote's turn borders, so a border word can flip to the
-# neighbouring turn by raw max-overlap; an unconfident word keeps its speaker
-# label but never starts a new segment.
 _SPLIT_MIN_OVERLAP_FRACTION = 0.5
-
-# A split must not produce a piece shorter than this. Where pyannote emits
-# 0.1-0.2s turn fragments (crosstalk, simultaneous greetings), word-level
-# speaker changes are noise: a sub-threshold group folds back into its
-# neighbour instead of becoming its own one-word segment.
 _MIN_SPLIT_PIECE_S = 0.5
 
 
@@ -139,18 +129,7 @@ def _split_segment_by_speaker(
     split_speakers: list[Optional[str]],
     word_speakers: list[Optional[str]],
 ) -> Iterable[WhisperSegment]:
-    """Split ``seg`` where consecutive words were confidently assigned different
-    speakers.
-
-    Whisper's own segmentation knows nothing about speakers: in a fast exchange
-    whose turns were merged into one decode window, a single segment can span
-    several pyannote turns. Flattening it to one majority speaker would erase
-    the alternation, so the segment is cut at word-level speaker changes — but
-    only at credible ones: ``split_speakers`` carries a speaker only for words
-    solidly inside their turn (``_SPLIT_MIN_OVERLAP_FRACTION``), border and
-    padding words never force a split, and a piece shorter than
-    ``_MIN_SPLIT_PIECE_S`` folds back into its neighbour.
-    """
+    """Split segment where consecutive words were assigned different speakers."""
     groups: list[tuple[Optional[str], list]] = []
     for word, speaker in zip(seg.words or [], split_speakers):
         if groups and (speaker is None or groups[-1][0] is None or speaker == groups[-1][0]):
@@ -164,8 +143,6 @@ def _split_segment_by_speaker(
     def duration(words: list) -> float:
         return words[-1].end - words[0].start
 
-    # Fold sub-threshold pieces into their neighbour (previous when possible),
-    # then re-merge neighbours that ended up with the same speaker.
     index = 0
     while len(groups) > 1 and index < len(groups):
         if duration(groups[index][1]) >= _MIN_SPLIT_PIECE_S:
@@ -188,8 +165,6 @@ def _split_segment_by_speaker(
     groups = merged
 
     if len(groups) <= 1:
-        # No credible speaker change: keep the segment whole and label it like
-        # the pre-split implementation did, by word-duration majority.
         majority = _majority_speaker(seg.words or [], word_speakers)
         if majority:
             seg.speaker = majority
@@ -197,7 +172,6 @@ def _split_segment_by_speaker(
         return
 
     for speaker, words in groups:
-        # whisper word tokens carry their leading spaces, so join reproduces the text exactly.
         piece = copy.copy(seg)
         piece.start = words[0].start
         piece.end = words[-1].end
@@ -211,17 +185,13 @@ def merge_whisper_diarization(
     whisper_segments: Iterable[WhisperSegment],
     diarization_segments: Iterable[DiarizationSegment],
 ) -> Iterable[WhisperSegment]:
+    """Merge speaker labels from diarization segments into whisper segments and words."""
     diarization_segments_peekable = _PeekWithMemory(diarization_segments)
     next_id = 0
 
     for seg in whisper_segments:
-        # Materialise candidates once — safe because _pack_segements_in_range
-        # does not consume the last segment from the peekable when it extends
-        # beyond the window, so it remains available for the next segment.
         candidates = list(_pack_segements_in_range(diarization_segments_peekable, seg.start, seg.end))
 
-        # Turns bordering this window, for the nearest-turn fallback: the last turn
-        # consumed just before the window, and the next unconsumed turn after it.
         seg_prev = diarization_segments_peekable.last
         seg_next = diarization_segments_peekable.peek() if diarization_segments_peekable.has_next() else None
 
@@ -233,14 +203,9 @@ def merge_whisper_diarization(
             for word in seg.words:
                 current_word_candidates = _pack_segements_in_range(word_candidates, word.start, word.end)
                 best_word_speaker, overlap = _find_best_speaker(current_word_candidates, word.start, word.end)
-                # Only a word solidly inside its turn may later cut the segment;
-                # border words keep their label but never define a boundary.
                 confident = overlap >= _SPLIT_MIN_OVERLAP_FRACTION * (word.end - word.start)
 
                 if best_word_speaker is None:
-                    # No overlap: snap to the nearest turn within SPEECH_PAD_S. Candidates
-                    # bordering the word live at the word-stream head / last consumed item,
-                    # while turns just outside the segment window come from seg_prev/seg_next.
                     word_next = word_candidates.peek() if word_candidates.has_next() else None
                     best_word_speaker = _nearest_speaker(
                         word.start,
@@ -253,8 +218,6 @@ def merge_whisper_diarization(
                 if best_word_speaker:
                     word.speaker = best_word_speaker
 
-            # Cut the segment at confident speaker changes so a fast exchange decoded
-            # as one window keeps its alternation; segment and word speakers stay consistent.
             for piece in _split_segment_by_speaker(seg, split_speakers, word_speakers):
                 piece.id = next_id
                 next_id += 1

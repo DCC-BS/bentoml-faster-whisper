@@ -35,25 +35,16 @@ fastapi = FastAPI()
 configure_logging()
 
 
-# Auto-generated task sub-routes we don't expose in the API docs. Cancel is answered with
-# 400 "task cancellation is not supported" by the in-process server (both `bentoml serve`
-# and the containerized bento) and never interrupts the running decode; retry is unused.
 _HIDDEN_TASK_ROUTE_SUFFIXES = ("/task/cancel", "/task/retry")
 
 
 def _hide_task_routes_from_openapi() -> None:
-    """Drop unused/non-functional auto-generated task routes from the OpenAPI/Swagger docs.
-
-    BentoML adds submit/status/get/retry/cancel routes for every ``@bentoml.task``. We only
-    use submit/status/get, so filter cancel and retry out of the generated spec to avoid
-    advertising operations we don't support. The routes still exist (BentoML owns them);
-    this only removes them from the docs.
-    """
+    """Drop unused/non-functional auto-generated task routes from OpenAPI docs."""
     import importlib
 
     openapi = importlib.import_module("_bentoml_sdk.service.openapi")
     if getattr(openapi.generate_spec, "_hides_task_routes", False):
-        return  # already patched (module re-imported)
+        return
     _generate_spec = openapi.generate_spec
 
     def generate_spec(svc, **kwargs):
@@ -69,12 +60,8 @@ def _hide_task_routes_from_openapi() -> None:
 
 _hide_task_routes_from_openapi()
 
-# .env is loaded in the package __init__ (before config.py reads the environment at import
-# time); by the time this module runs, os.getenv below already reflects it.
 TIMEOUT = int(os.getenv("TIMEOUT", 3000))
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", 4))
-# Load models into VRAM at worker startup instead of lazily on first request. Set to
-# "false" to keep the old lazy behaviour (e.g. token-less dev without cached weights).
 WARMUP_ON_STARTUP = os.getenv("WARMUP_ON_STARTUP", "true").lower() not in ("false", "0", "no")
 DURATION_BUCKETS_S = [
     1.0,
@@ -117,8 +104,7 @@ class FasterWhisper:
 
     @bentoml.on_startup
     def warmup(self):
-        # Runs once per worker: load the resident Whisper model and the pyannote
-        # pipeline into VRAM so the first request doesn't pay the load cost.
+        """Warm up worker process by pre-loading resident model into VRAM."""
         if WARMUP_ON_STARTUP:
             self.handler.warmup()
 
@@ -131,8 +117,7 @@ class FasterWhisper:
 
     @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)  # type: ignore
     def batch_transcribe(self, ctx: bentoml.Context = None, **params: Any) -> WhisperResponse:
-        # Kept for API compatibility; the former separate batchable service is gone, so this
-        # now decodes on the resident model in-process, like /v1/audio/transcriptions.
+        """Transcribe audio (kept for OpenAI API backward compatibility)."""
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
         self._set_response_content_type(ctx, request.response_format)
@@ -148,23 +133,17 @@ class FasterWhisper:
 
         result: list[Segment] = []
 
-        # Register the entry before diarization (which runs eagerly inside prepare_audio_segments) so
-        # the UI sees a tracked task and live diarization progress, not a missing/0 entry until decode.
         diarization_progress_callback = None
         if request.progress_id:
             self.progress_handler.add_progress(request.progress_id)
             progress_id = request.progress_id
 
-            # Fold the two stages into one monotonic 0..1 value so the bar never resets:
-            # diarization occupies 0..0.3, transcription 0.3..1.0.
             def diarization_progress_callback(fraction: float) -> None:
                 self.progress_handler.update_progress(
                     progress_id,
                     ProgressResponse(progress=fraction * 0.3, currentTime=0, duration=0),
                 )
 
-        # prepare_audio_segments runs eager diarization/decode and can raise on bad input, so it lives
-        # inside the try to guarantee the progress entry registered above is always removed.
         segments = None
         try:
             segments, transcription_info = self.handler.prepare_audio_segments(
@@ -173,8 +152,6 @@ class FasterWhisper:
 
             for segment in segments:
                 if request.progress_id:
-                    # duration can be 0 for a degenerate/empty container; keep the bar at the
-                    # post-diarization floor instead of dividing by zero.
                     fraction = segment.end / transcription_info.duration if transcription_info.duration else 0.0
                     self.progress_handler.update_progress(
                         request.progress_id,
@@ -190,7 +167,6 @@ class FasterWhisper:
             result = list(clean_transcription_segments(result, transcription_info))
             return segments_to_response(result, transcription_info, request.response_format)
         finally:
-            # Release the held model ref and progress entry even if the decode raises midway.
             if segments is not None:
                 segments.close()
             if request.progress_id is not None:
@@ -203,8 +179,6 @@ class FasterWhisper:
         self._prepare_transcribe(request)
 
         segments, transcription_info = self.handler.prepare_audio_segments(request)
-        # Drop hallucinations/silence and apply the same normalization as the non-streaming
-        # endpoints so the stream doesn't leak segments the other paths filter out.
         cleaned = clean_transcription_segments(segments, transcription_info)
         generator = segments_to_streaming_response(cleaned, transcription_info, request.response_format)
 
@@ -212,7 +186,6 @@ class FasterWhisper:
             for chunk in generator:
                 yield chunk
         finally:
-            # Release the held model ref if the client disconnects mid-stream.
             segments.close()
 
     @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)  # type: ignore
@@ -224,16 +197,14 @@ class FasterWhisper:
 
     @fastapi.get("/progress/{progress_id}")
     async def get_progress(self, progress_id: str) -> ProgressResponse:
-        # async so the event loop answers progress polls directly instead of queueing them in
-        # Starlette's threadpool behind heavy GPU transcription jobs. The body only reads a dict
-        # under a microsecond lock (no I/O, no await), so it never blocks the loop.
+        """Retrieve progress for a running transcription task."""
         return self.progress_handler.get_progress(progress_id)
 
     def _served_model_object(self) -> ModelObject:
         """The single model this API serves, as a static OpenAI-style ModelObject."""
         return ModelObject(
             id=self.config.faster_whisper.default_model_name,
-            created=1668556800,  # large-v2 release (2022-11-16); static, no HF query.
+            created=1668556800,
             object_="model",
             owned_by="Systran",
             language=[],
@@ -241,17 +212,15 @@ class FasterWhisper:
 
     @fastapi.get("/models")
     async def get_models(self) -> ModelListResponse:
-        # async: static metadata build, no blocking work — runs on the event loop so it stays
-        # responsive under 100% compute load instead of waiting on the threadpool.
+        """List models served by this endpoint."""
         return ModelListResponse(data=[self._served_model_object()])
 
     @fastapi.get("/models/{model_name:path}")
     async def get_model(
         self,
-        # examples=[...] is evaluated at class-definition time, so it reads the import-time
-        # config global rather than the injected self.config used by the runtime checks below.
         model_name: Annotated[str, FastAPIPath(examples=[faster_whisper_config.default_model_name])],
     ) -> ModelObject:
+        """Retrieve details of a specific served model."""
         served = self.config.faster_whisper.default_model_name
         if model_name != served:
             raise HTTPException(
@@ -261,11 +230,7 @@ class FasterWhisper:
         return self._served_model_object()
 
     def _set_response_content_type(self, ctx: "bentoml.Context | None", response_format) -> None:
-        # The endpoints declare a single application/json return type, so text/vtt/srt bodies
-        # would otherwise be served mislabelled as JSON. Overriding the response header here
-        # wins: the server applies ctx.response headers on top of the serializer's Content-Type.
-        # ctx is injected by the server per request; it is None only for direct in-process calls
-        # (e.g. unit tests), where there is no HTTP response to label.
+        """Set HTTP Content-Type header on BentoML context based on target response format."""
         if ctx is None:
             return
         ctx.response.headers["content-type"] = content_type_for_format(response_format)

@@ -30,7 +30,7 @@ class WhisperModelProvider:
         self._model: WhisperModel | None = None
 
     def get(self) -> WhisperModel:
-        # Double-checked locking: once loaded, the hot path returns without taking the lock.
+        """Return the resident Whisper model instance (loading it on first call)."""
         if self._model is None:
             with self._lock:
                 if self._model is None:

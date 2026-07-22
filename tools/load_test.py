@@ -24,7 +24,6 @@ import av
 import numpy as np
 import psutil
 
-# Add src/ to python path if running standalone
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
@@ -82,7 +81,7 @@ class SystemMonitor:
         return 0.0, 0.0
 
     def _monitor_loop(self):
-        psutil.cpu_percent(interval=None)  # prime psutil CPU
+        psutil.cpu_percent(interval=None)
         while not self._stop_event.is_set():
             cpu = psutil.cpu_percent(interval=None)
             gpu_util, vram_used = self._query_gpu()
@@ -105,7 +104,6 @@ class SystemMonitor:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
 
-        # Also check PyTorch peak VRAM allocator if available
         torch_vram_mb = 0.0
         if torch.cuda.is_available():
             try:

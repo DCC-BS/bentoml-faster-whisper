@@ -7,16 +7,12 @@ _MAX_TRACKED_PROGRESS = 1000
 
 class ProgressHandler:
     def __init__(self) -> None:
-        # Per-instance and lock-guarded: a class-level dict would be shared and mutated across concurrent requests.
         self.progress_dict: dict[str, ProgressResponse] = {}
         self._lock = threading.Lock()
 
     def _set_locked(self, id: str, progress: ProgressResponse) -> None:
         """Stores progress and evicts the least-recently-updated entry past the cap.
         Caller must hold the lock."""
-        # Re-insert so the dict stays ordered by last update: a plain assignment to an
-        # existing key keeps its original position, which would let a long-running task
-        # that is actively reporting progress be evicted ahead of newer but idle entries.
         self.progress_dict.pop(id, None)
         self.progress_dict[id] = progress
 
