@@ -17,7 +17,7 @@ from tools.load_test import (
     run_single_request_in_process,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = pytest.mark.performance
 
 
 @pytest.fixture(scope="module")

@@ -29,9 +29,15 @@ test-all: ## Run every unit test, model-backed ones included
 	@uv run --env-file .env python -m pytest -m "not integration"
 
 .PHONY: integration
-integration: ## Run integration tests (requires a running service)
+integration: ## Run integration tests (excluding performance load tests)
 	@echo "🚀 Testing code: Running integration tests"
-	@uv run --env-file .env python -m pytest -m integration
+	@uv run --env-file .env python -m pytest -m "integration and not performance"
+
+.PHONY: performance
+performance: ## Run load and performance benchmark tests (records tracking metrics to load_test_results.json)
+	@echo "🚀 Testing code: Running load & performance tests"
+	@uv run --env-file .env python tools/load_test.py
+
 
 .PHONY: docker-build
 docker-build: ## Build and tag the Docker image (set HF_TOKEN to bake the gated pyannote weights)

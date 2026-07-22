@@ -79,6 +79,7 @@ markers = [
     "integration: marks tests as integration tests (run with 'make integration')",
     "unit: mark tests as unit tests.",
     "model: mark tests that load a real Whisper model (slow, GPU-bound, run serially).",
+    "performance: mark tests as performance/load tests (run with 'make performance').",
 ]
 filterwarnings = [
     "ignore",
