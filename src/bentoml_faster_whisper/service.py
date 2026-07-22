@@ -34,6 +34,41 @@ fastapi = FastAPI()
 
 configure_logging()
 
+
+# Auto-generated task sub-routes we don't expose in the API docs. Cancel is answered with
+# 400 "task cancellation is not supported" by the in-process server (both `bentoml serve`
+# and the containerized bento) and never interrupts the running decode; retry is unused.
+_HIDDEN_TASK_ROUTE_SUFFIXES = ("/task/cancel", "/task/retry")
+
+
+def _hide_task_routes_from_openapi() -> None:
+    """Drop unused/non-functional auto-generated task routes from the OpenAPI/Swagger docs.
+
+    BentoML adds submit/status/get/retry/cancel routes for every ``@bentoml.task``. We only
+    use submit/status/get, so filter cancel and retry out of the generated spec to avoid
+    advertising operations we don't support. The routes still exist (BentoML owns them);
+    this only removes them from the docs.
+    """
+    import importlib
+
+    openapi = importlib.import_module("_bentoml_sdk.service.openapi")
+    if getattr(openapi.generate_spec, "_hides_task_routes", False):
+        return  # already patched (module re-imported)
+    _generate_spec = openapi.generate_spec
+
+    def generate_spec(svc, **kwargs):
+        spec = _generate_spec(svc, **kwargs)
+        for route in list(spec.paths):
+            if route.endswith(_HIDDEN_TASK_ROUTE_SUFFIXES):
+                del spec.paths[route]
+        return spec
+
+    generate_spec._hides_task_routes = True  # type: ignore[attr-defined]
+    openapi.generate_spec = generate_spec
+
+
+_hide_task_routes_from_openapi()
+
 # .env is loaded in the package __init__ (before config.py reads the environment at import
 # time); by the time this module runs, os.getenv below already reflects it.
 TIMEOUT = int(os.getenv("TIMEOUT", 3000))
