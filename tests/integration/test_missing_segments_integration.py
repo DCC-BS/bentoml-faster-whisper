@@ -40,7 +40,7 @@ def diarized_segments() -> list[dict]:
             "language": "de",
             "diarization": True,
             "vad_filter": False,
-            "response_format": ResponseFormat.JSON_DIARZED,
+            "response_format": ResponseFormat.JSON_DIARIZED,
             "timestamp_granularities": ["segment"],
         }
     ).model_dump()

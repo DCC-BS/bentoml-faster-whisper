@@ -6,8 +6,10 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, cast
 
+import av
 import pyannote.audio as _pyannote_audio
 import torch
+from bentoml.exceptions import InvalidArgument
 from pyannote.audio import Pipeline
 from pyannote.core import Segment
 
@@ -80,11 +82,27 @@ class DiarizationSegment:
         return self.__str__()
 
 
+def _is_16k_mono_wav(audio_path: str) -> bool:
+    """True only when the file is already 16 kHz mono, so it can go straight to
+    pyannote. A stereo or non-16 kHz .wav must still be resampled — pyannote expects
+    16 kHz mono, and feeding it raw multi-channel/off-rate audio yields wrong turn
+    boundaries or tensor errors. Any probe failure returns False so the caller falls
+    back to ffmpeg (which normalizes, or fails loudly on a truly corrupt file)."""
+    try:
+        with av.open(audio_path) as container:
+            stream = container.streams.audio[0]
+            cc = stream.codec_context
+            return cc.sample_rate == 16000 and cc.layout is not None and cc.layout.nb_channels == 1
+    except Exception:
+        return False
+
+
 @contextlib.contextmanager
 def _as_wav(audio_path: str) -> Iterator[str]:
     # MP3/FLAC headers report duration imprecisely; convert to WAV so pyannote
-    # gets an exact sample count without loading the whole file into RAM.
-    if Path(audio_path).suffix.lower() == ".wav":
+    # gets an exact sample count without loading the whole file into RAM. A .wav
+    # skips conversion only when it is already 16 kHz mono (see _is_16k_mono_wav).
+    if Path(audio_path).suffix.lower() == ".wav" and _is_16k_mono_wav(audio_path):
         yield audio_path
         return
 
@@ -98,8 +116,11 @@ def _as_wav(audio_path: str) -> Iterator[str]:
                 capture_output=True,
             )
         except subprocess.CalledProcessError as e:
-            logger.error("ffmpeg conversion failed", stderr=e.stderr.decode(errors="replace"))
-            raise
+            # A failed decode is a bad upload, not a server fault: surface it as a 4xx
+            # (InvalidArgument -> HTTP 400) instead of letting it bubble up as a 500.
+            stderr = e.stderr.decode(errors="replace")
+            logger.error("ffmpeg conversion failed", stderr=stderr)
+            raise InvalidArgument("Failed to decode audio file") from e
         yield tmp_path
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -118,9 +139,11 @@ class DiarizationService:
     def load(self):
         """
         Load the speaker diarization pipeline from the Hugging Face model hub.
-        The pipeline is sent to the GPU if available. Idempotent and lazy: loading
-        only happens on first use so workers that never diarize don't pin a
-        pipeline to the GPU.
+        The pipeline is sent to the GPU if available. Idempotent: safe to call
+        repeatedly. Loading is lazy at this level (only the first call actually
+        loads), but note that with WARMUP_ON_STARTUP=true (the default) the worker
+        pre-loads the pipeline during startup, so in that configuration the pin
+        happens eagerly rather than on the first diarization request.
         """
         with self._lock:
             if self.pipeline is not None:

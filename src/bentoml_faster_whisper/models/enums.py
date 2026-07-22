@@ -112,7 +112,7 @@ class TimestampGranularity(enum.StrEnum):
 class ResponseFormat(enum.StrEnum):
     TEXT = "text"
     JSON = "json"
-    JSON_DIARZED = "json_diarized"
+    JSON_DIARIZED = "json_diarized"
     VERBOSE_JSON = "verbose_json"
     SRT = "srt"
     VTT = "vtt"

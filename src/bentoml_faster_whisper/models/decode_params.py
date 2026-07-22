@@ -23,12 +23,12 @@ class DecodeParams(BaseModel):
     )
     prompt: str = Field(
         default=faster_whisper_config.default_prompt,
-        description="Optional text string or iterable of token ids to provide as a prompt for the first window.",
+        description="Optional text string to provide as a prompt for the first window.",
     )
     response_format: ValidatedResponseFormat = Field(
         default=faster_whisper_config.default_response_format,
         description="The format of the output, in one of these options: `json`, `text`, `srt`, `verbose_json`, "
-        "or `vtt`.",
+        "`vtt`, or `json_diarized`.",
     )
     temperature: ValidatedTemperature = Field(
         default=faster_whisper_config.default_temperature,
@@ -66,7 +66,7 @@ class DecodeParams(BaseModel):
     )
     hotwords: Annotated[str, MaxLen(500)] = Field(
         default=faster_whisper_config.hotwords,
-        description="Hotwords/hint phrases to provide the model with. Has no effect if prefix is not None.",
+        description="Hotwords/hint phrases to provide the model with.",
     )
     beam_size: Annotated[int, Ge(1), Le(16)] = Field(
         default=faster_whisper_config.beam_size,

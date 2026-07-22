@@ -207,7 +207,7 @@ def _split_segment_by_speaker(
         yield piece
 
 
-def merge_whipser_diarization(
+def merge_whisper_diarization(
     whisper_segments: Iterable[WhisperSegment],
     diarization_segments: Iterable[DiarizationSegment],
 ) -> Iterable[WhisperSegment]:

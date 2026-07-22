@@ -1,9 +1,12 @@
+import contextlib
 import dataclasses
 import logging
 import time
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Iterator
 
+import av
 import numpy as np
+from bentoml.exceptions import InvalidArgument
 from faster_whisper import WhisperModel
 from faster_whisper.audio import decode_audio
 from faster_whisper.vad import VadOptions
@@ -35,9 +38,23 @@ from bentoml_faster_whisper.utils.speech_regions import (
     turns_to_language_runs,
 )
 from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
-from bentoml_faster_whisper.utils.whisper_diarization_merger import merge_whipser_diarization
+from bentoml_faster_whisper.utils.whisper_diarization_merger import merge_whisper_diarization
 
 logger = logging.getLogger(__name__)
+
+# Exceptions raised while decoding an audio container (PyAV / faster-whisper). These mean
+# the uploaded file is malformed or unsupported — a client error — not a server fault.
+_AUDIO_DECODE_ERRORS = (av.error.FFmpegError, RuntimeError)
+
+
+@contextlib.contextmanager
+def _audio_decode_errors_as_invalid() -> Iterator[None]:
+    """Map audio-decoding failures to InvalidArgument (HTTP 400) instead of letting
+    them bubble up as an opaque HTTP 500. Wraps only the eager decode entry points."""
+    try:
+        yield
+    except _AUDIO_DECODE_ERRORS as e:
+        raise InvalidArgument("Failed to decode audio file") from e
 
 
 def _strip_words(segments: Iterable[Segment]) -> Iterable[Segment]:
@@ -131,13 +148,14 @@ class FasterWhisperHandler:
         word_timestamps = request.response_format == ResponseFormat.VERBOSE_JSON
         decode_options = self._decode_options(request, word_timestamps)
         try:
-            segments, transcription_info = whisper.transcribe(
-                str(request.file),
-                task=Task.TRANSLATE,
-                vad_filter=request.vad_filter,
-                vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
-                **decode_options,
-            )
+            with _audio_decode_errors_as_invalid():
+                segments, transcription_info = whisper.transcribe(
+                    str(request.file),
+                    task=Task.TRANSLATE,
+                    vad_filter=request.vad_filter,
+                    vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
+                    **decode_options,
+                )
             segments = Segment.from_faster_whisper_segments(segments)
             # Apply the same hallucination/silence filtering and normalization as the
             # transcription paths so a translation isn't the one endpoint that leaks
@@ -198,7 +216,8 @@ class FasterWhisperHandler:
         has_speech = False
         original_duration_s = 0.0
         if intervals:
-            decoded = decode_audio(str(request.file), sampling_rate=WHISPER_SAMPLE_RATE)
+            with _audio_decode_errors_as_invalid():
+                decoded = decode_audio(str(request.file), sampling_rate=WHISPER_SAMPLE_RATE)
             original_duration_s = decoded.shape[0] / WHISPER_SAMPLE_RATE
             # Only check that decodable speech exists — the full-file concatenate is deferred to
             # the per-run decode paths (which re-collapse per run) and the rare LID fallback, so a
@@ -239,17 +258,18 @@ class FasterWhisperHandler:
                         whisper, decoded, turns, resolved, original_duration_s, decode_options, tag_language=False
                     )
             else:
-                segments, transcription_info = whisper.transcribe(
-                    str(request.file),
-                    language=request.language,
-                    vad_filter=request.vad_filter,
-                    vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
-                    **decode_options,
-                )
+                with _audio_decode_errors_as_invalid():
+                    segments, transcription_info = whisper.transcribe(
+                        str(request.file),
+                        language=request.language,
+                        vad_filter=request.vad_filter,
+                        vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
+                        **decode_options,
+                    )
                 segments = Segment.from_faster_whisper_segments(segments)
 
             if dia_segments:
-                segments = merge_whipser_diarization(segments, dia_segments)
+                segments = merge_whisper_diarization(segments, dia_segments)
 
             # Word timestamps are requested for every diarized decode, but the response shape must
             # match the request: drop the words the merge just consumed unless they were asked for.

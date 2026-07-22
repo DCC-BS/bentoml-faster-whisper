@@ -73,14 +73,14 @@ def test_top_level_language_is_majority_by_speech_time(verbose_response):
 
 
 def test_json_diarized_carries_segment_language(diarizing_handler):
-    response = _transcribe(diarizing_handler, response_format=ResponseFormat.JSON_DIARZED)
+    response = _transcribe(diarizing_handler, response_format=ResponseFormat.JSON_DIARIZED)
 
     languages = {segment["language"] for segment in response["segments"]}
     assert languages == {"de", "en"}
 
 
 def test_explicit_language_disables_per_segment_detection(diarizing_handler):
-    response = _transcribe(diarizing_handler, language="de", response_format=ResponseFormat.JSON_DIARZED)
+    response = _transcribe(diarizing_handler, language="de", response_format=ResponseFormat.JSON_DIARIZED)
 
     assert response["segments"], "explicit-language transcription must still produce segments"
     assert all(segment["language"] is None for segment in response["segments"])

@@ -31,4 +31,9 @@ def clean_transcription_segments(
         if detect_hallucinations(segment.text.strip(), hallucination_language):
             continue
         segment.text = segment.text.replace("ß", "ss")
+        # Keep per-word text in sync with segment.text: verbose_json and diarized
+        # responses expose segment.words, and leaving ß there would contradict the
+        # "ss" in segment.text for the same span.
+        for word in segment.words or []:
+            word.word = word.word.replace("ß", "ss")
         yield segment

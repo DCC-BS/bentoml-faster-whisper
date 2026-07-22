@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-from bentoml.exceptions import InvalidArgument
 
 from bentoml_faster_whisper.models.enums import ResponseFormat, TimestampGranularity
 from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
@@ -71,20 +70,26 @@ def test_transcribe_response_format(faster_whisper_service, response_format, tim
 def test_response_format_verbose_timestamp_granularities_segment(
     faster_whisper_service,
 ):
+    """OpenAI drop-in: verbose_json with the default segment granularity (no 'word')
+    must be accepted and return segment-level timestamps, not rejected."""
     # given
     file = Path("./tests/assets/example_audio.mp3")
     response_format = ResponseFormat.VERBOSE_JSON
     timestamp_granularities = [TimestampGranularity.SEGMENT]
 
-    # when/then
-    with pytest.raises(InvalidArgument):
-        faster_whisper_service.transcribe(
-            **_extend_params(
-                file=file,
-                response_format=response_format,
-                timestamp_granularities=timestamp_granularities,
-            )
+    # when
+    transcription = faster_whisper_service.transcribe(
+        **_extend_params(
+            file=file,
+            response_format=response_format,
+            timestamp_granularities=timestamp_granularities,
         )
+    )
+
+    # then: valid verbose_json with segments and no word-level timestamps
+    payload = json.loads(transcription)
+    assert "segments" in payload
+    assert payload.get("words") in (None, [])
 
 
 def test_response_format_verbose_timestamp_granularities_word(faster_whisper_service):
@@ -143,7 +148,7 @@ _HEAD60_TURNS = [
     "diarization, vad_filter, response_format",
     [
         (False, False, ResponseFormat.TEXT),
-        (True, True, ResponseFormat.JSON_DIARZED),
+        (True, True, ResponseFormat.JSON_DIARIZED),
     ],
 )
 def test_transcribe_keeps_leading_speech_across_pipelines(
@@ -172,7 +177,7 @@ def test_transcribe_keeps_leading_speech_across_pipelines(
     )
 
     # then
-    if response_format == ResponseFormat.JSON_DIARZED:
+    if response_format == ResponseFormat.JSON_DIARIZED:
         text = " ".join(segment["text"] for segment in json.loads(transcription)["segments"])
     else:
         text = transcription

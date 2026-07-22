@@ -15,6 +15,7 @@ from bentoml_faster_whisper.models.output_models import (
     ModelListResponse,
     ModelObject,
     WhisperResponse,
+    content_type_for_format,
     segments_to_response,
     segments_to_streaming_response,
 )
@@ -87,17 +88,19 @@ class FasterWhisper:
             self.handler.warmup()
 
     @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)  # type: ignore
-    def transcribe(self, **params: Any) -> WhisperResponse:
+    def transcribe(self, ctx: bentoml.Context = None, **params: Any) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
+        self._set_response_content_type(ctx, request.response_format)
         return self.handler.transcribe_audio(request)
 
     @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)  # type: ignore
-    def batch_transcribe(self, **params: Any) -> WhisperResponse:
+    def batch_transcribe(self, ctx: bentoml.Context = None, **params: Any) -> WhisperResponse:
         # Kept for API compatibility; the former separate batchable service is gone, so this
         # now decodes on the resident model in-process, like /v1/audio/transcriptions.
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
+        self._set_response_content_type(ctx, request.response_format)
         return self.handler.transcribe_audio(request)
 
     @bentoml.task(
@@ -178,9 +181,10 @@ class FasterWhisper:
             segments.close()
 
     @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)  # type: ignore
-    def translate(self, **params: Any) -> WhisperResponse:
+    def translate(self, ctx: bentoml.Context = None, **params: Any) -> WhisperResponse:
         request = TranslationRequest.from_dict(params)
         self._configure_vad_options(request)
+        self._set_response_content_type(ctx, request.response_format)
         return self.handler.translate_audio(request)
 
     @fastapi.get("/progress/{progress_id}")
@@ -215,6 +219,16 @@ class FasterWhisper:
                 detail=f"Model '{model_name}' not found. Only '{served}' is served.",
             )
         return self._served_model_object()
+
+    def _set_response_content_type(self, ctx: "bentoml.Context | None", response_format) -> None:
+        # The endpoints declare a single application/json return type, so text/vtt/srt bodies
+        # would otherwise be served mislabelled as JSON. Overriding the response header here
+        # wins: the server applies ctx.response headers on top of the serializer's Content-Type.
+        # ctx is injected by the server per request; it is None only for direct in-process calls
+        # (e.g. unit tests), where there is no HTTP response to label.
+        if ctx is None:
+            return
+        ctx.response.headers["content-type"] = content_type_for_format(response_format)
 
     def _prepare_transcribe(self, request: TranscriptionRequest):
         validate_timestamp_granularities(

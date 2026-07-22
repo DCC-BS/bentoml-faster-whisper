@@ -207,7 +207,7 @@ def turns_to_language_runs(
     turn and clamp the rest of its speech away, silently deleting it from the decode.
     Unioning restores the sorted-non-overlapping invariant the split and the clamp
     rely on. Speaker labels are untouched by this: runs carry timing only, and
-    merge_whipser_diarization attributes words from the original turns.
+    merge_whisper_diarization attributes words from the original turns.
     """
     grouped = [
         (language, sub_run)
