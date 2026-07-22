@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import HTTPException
 import pytest
 from pydantic import ValidationError
@@ -12,7 +14,8 @@ def test_get_models_standard_case():
     faster_whisper_service = FasterWhisper()
 
     # when
-    models = faster_whisper_service.get_models()
+    # get_models is an async endpoint; drive the coroutine for the in-process call.
+    models = asyncio.run(faster_whisper_service.get_models())
 
     # then
     assert models is not None
@@ -22,7 +25,7 @@ def test_get_models_standard_case():
 def test_get_model_served_case():
     faster_whisper_service = FasterWhisper()
 
-    model = faster_whisper_service.get_model(faster_whisper_config.default_model_name)
+    model = asyncio.run(faster_whisper_service.get_model(faster_whisper_config.default_model_name))
 
     assert model.id == faster_whisper_config.default_model_name
 
@@ -34,7 +37,7 @@ def test_model_not_found():
 
     # when / then
     with pytest.raises(HTTPException):
-        faster_whisper_service.get_model(unknown_model_name)
+        asyncio.run(faster_whisper_service.get_model(unknown_model_name))
 
 
 def test_served_model_accepted():

@@ -243,7 +243,21 @@ def test_async_progress_and_models_endpoints():
     are declared as asynchronous coroutine functions (inspect.iscoroutinefunction).
     """
     _ = FasterWhisper  # reference service class
-    route_endpoints = {r.path: r.endpoint for r in fastapi.routes if hasattr(r, "endpoint")}
+
+    # BentoML wraps class-method routes in a deferred `_IncludedRouter` whose sub-routes live on
+    # `original_router`, so they are not top-level `fastapi.routes` entries. Walk both so the
+    # contract observes the real handlers rather than xfailing because it can't find them.
+    def _collect_endpoints(routes):
+        collected = {}
+        for r in routes:
+            if hasattr(r, "endpoint") and hasattr(r, "path"):
+                collected[r.path] = r.endpoint
+            inner = getattr(r, "original_router", None)
+            if inner is not None and hasattr(inner, "routes"):
+                collected.update(_collect_endpoints(inner.routes))
+        return collected
+
+    route_endpoints = _collect_endpoints(fastapi.routes)
     target_routes = ["/progress/{progress_id}", "/models", "/models/{model_name:path}"]
 
     for route_path in target_routes:

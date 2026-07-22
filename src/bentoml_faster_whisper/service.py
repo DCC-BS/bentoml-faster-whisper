@@ -223,7 +223,10 @@ class FasterWhisper:
         return self.handler.translate_audio(request)
 
     @fastapi.get("/progress/{progress_id}")
-    def get_progress(self, progress_id: str) -> ProgressResponse:
+    async def get_progress(self, progress_id: str) -> ProgressResponse:
+        # async so the event loop answers progress polls directly instead of queueing them in
+        # Starlette's threadpool behind heavy GPU transcription jobs. The body only reads a dict
+        # under a microsecond lock (no I/O, no await), so it never blocks the loop.
         return self.progress_handler.get_progress(progress_id)
 
     def _served_model_object(self) -> ModelObject:
@@ -237,11 +240,13 @@ class FasterWhisper:
         )
 
     @fastapi.get("/models")
-    def get_models(self) -> ModelListResponse:
+    async def get_models(self) -> ModelListResponse:
+        # async: static metadata build, no blocking work — runs on the event loop so it stays
+        # responsive under 100% compute load instead of waiting on the threadpool.
         return ModelListResponse(data=[self._served_model_object()])
 
     @fastapi.get("/models/{model_name:path}")
-    def get_model(
+    async def get_model(
         self,
         # examples=[...] is evaluated at class-definition time, so it reads the import-time
         # config global rather than the injected self.config used by the runtime checks below.

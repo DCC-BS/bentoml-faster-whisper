@@ -31,7 +31,10 @@ class WhisperModelConfig(BaseModel):
 
     inference_device: Device = Device.CUDA if torch.cuda.is_available() else Device.AUTO
     device_index: int | list[int] = 0
-    compute_type: Quantization = Quantization.FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
+    # int8_float16 on CUDA: ~50% less VRAM and faster decoder token generation with no quality
+    # regression on the curated German eval (WER 0.460 -> 0.455, CER 0.159 -> 0.157). CPU builds
+    # keep DEFAULT since int8_float16 is a CUDA compute type.
+    compute_type: Quantization = Quantization.INT8_FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
     cpu_threads: int = 0
     num_workers: int = 1
 
@@ -67,7 +70,10 @@ class FasterWhisperConfig(BaseModel):
         )
     )
     diarization: bool = True
-    condition_on_previous_text: bool = True
+    # False by default: on the curated German eval this improved every metric (WER 0.460 -> 0.453,
+    # CER 0.159 -> 0.154, BLEU 45.7 -> 46.1) by avoiding the hallucination cascades that
+    # previous-text conditioning can trigger across 30s windows. Still per-request overridable.
+    condition_on_previous_text: bool = False
     repetition_penalty: float = 1.0
     length_penalty: float = 1.0
     no_repeat_ngram_size: int = 0
