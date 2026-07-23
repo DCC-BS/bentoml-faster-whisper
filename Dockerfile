@@ -67,6 +67,7 @@ COPY --from=build --chown=app:app /app /app
 # volume over this path, Docker seeds the volume from these contents on first start.
 COPY --from=build --chown=app:app /opt/models /home/app/.cache/huggingface
 
+
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -77,9 +78,12 @@ ENV PYTHONUNBUFFERED=1
 # base image, so only the cu13 cuBLAS/cuDNN wheel dirs need exposing here.
 ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.13/site-packages/nvidia/cu13/lib:/app/.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}
 
-# Copy varlock binary for environment variable validation at container startup
-COPY --from=ghcr.io/dmno-dev/varlock:latest /usr/local/bin/varlock /usr/local/bin/varlock
-
 USER app
+
+# Copy varlock binary for environment variable validation at container startup
+RUN curl -sSfL https://varlock.dev/install.sh | sh -s
+
+ENV IS_PROD=true
+
 
 ENTRYPOINT ["/app/scripts/run_varlock.sh", "bentoml", "serve", "bentoml_faster_whisper.service:FasterWhisper", "-p", "50001"]
