@@ -15,7 +15,7 @@ jobs:
       uv_version: "0.11.21"
       check_command: "make check"
 
-  # Not the reusable workflow: it has no Codecov upload step. ffmpeg and an empty
+  # Not the reusable workflow: it has no Codecov upload step. ffmpeg and a populated
   # .env are runner prerequisites of the fast suite.
   tests:
     name: Tests & Coverage (Python ${{ matrix.python-version }})
@@ -40,7 +40,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Run unit tests with coverage
-        run: touch .env && make test-cov
+        run: cp .env.example .env && make test-cov
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
