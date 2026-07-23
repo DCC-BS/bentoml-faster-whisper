@@ -15,7 +15,7 @@ dependencies = [
     "faster-whisper==1.2.1",
     # cu130 index caps torchaudio at 2.11.0; torch/torchaudio share an ABI so both
     # must stay on the same 2.11.x train. torchcodec 0.14 supports torch >=2.11.
-    "torch>=2.12,<2.13",
+    "torch>=2.13,<2.14",
     "torchaudio>=2.11,<2.12",
     "torchcodec>=0.13",
     # ctranslate2 (the faster-whisper engine) is a CUDA-12 build: it dlopens
