@@ -74,7 +74,8 @@ def _run_diagnosis(
                 "timestamp_granularities": ["word"],
             }
         )
-        raw_response = _handler.transcribe_audio(request)
+        # The declared union only exists to shape the OpenAPI schema; every branch renders to str.
+        raw_response = cast(str, _handler.transcribe_audio(request))
         response = json.loads(raw_response)
     finally:
         del _handler.diarization.diarize

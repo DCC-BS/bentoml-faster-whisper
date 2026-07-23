@@ -18,7 +18,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import av
 import numpy as np
@@ -435,11 +435,11 @@ def main():
     audio_duration_s = get_audio_duration_seconds(audio_path)
     logger.info("Loaded Audio File: %s (Duration: %.2fs)", audio_path.name, audio_duration_s)
 
-    service_or_url = None
+    service_or_url: Any = None
     is_http = bool(args.url)
 
     if is_http:
-        service_or_url = args.url
+        service_or_url = str(args.url)
         logger.info("Running load test against HTTP endpoint: %s", service_or_url)
     else:
         logger.info("Loading in-process FasterWhisper service...")
@@ -462,7 +462,7 @@ def main():
         # 1. Single Request Baseline Test (1 isolated request)
         logger.info("Executing Single Request Baseline Test (%s)...", mode_str)
         if is_http:
-            baseline_result = run_single_request_http(service_or_url, audio_path, diarization=diarization)
+            baseline_result = run_single_request_http(cast(str, service_or_url), audio_path, diarization=diarization)
         else:
             baseline_result = run_single_request_in_process(service_or_url, audio_path, diarization=diarization)
 

@@ -88,12 +88,12 @@ def test_diarization_segments_consumed_incrementally():
             consumed_count += 1
             yield segment
 
-    list(merge_whisper_diarization([whisper_segments[0]], segment_generator()))
+    list(merge_whisper_diarization([whisper_segments[0]], segment_generator()))  # type: ignore
     assert consumed_count == 3
 
     consumed_count = 0
 
-    list(merge_whisper_diarization(whisper_segments[:2], segment_generator()))
+    list(merge_whisper_diarization(whisper_segments[:2], segment_generator()))  # type: ignore
     assert consumed_count == 5
 
     consumed_count = 0
@@ -121,7 +121,7 @@ def test_segment_spanning_speaker_change_is_split():
         DiarizationSegment(segment=Segment(5, 10), speaker="B"),
     ]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert [(s.speaker, s.start, s.end, s.text) for s in result] == [
         ("A", 3, 5, " hello"),
@@ -152,7 +152,7 @@ def test_fast_exchange_splits_into_alternating_speakers():
         DiarizationSegment(segment=Segment(4, 6), speaker="A"),
     ]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert [(s.speaker, s.text) for s in result] == [("A", " oui"), ("B", " non"), ("A", " si")]
 
@@ -178,7 +178,7 @@ def test_border_word_straddling_turn_boundary_does_not_split():
         DiarizationSegment(segment=Segment(110.9, 111.4), speaker="B"),
     ]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert len(result) == 1, f"border jitter must not split: {[(s.speaker, s.text) for s in result]}"
     assert result[0].speaker == "A"
@@ -203,7 +203,7 @@ def test_words_without_speaker_do_not_split_segment():
         DiarizationSegment(segment=Segment(4, 6), speaker="A"),
     ]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert len(result) == 1
     assert result[0].speaker == "A"
@@ -215,7 +215,7 @@ def test_segment_in_pre_pad_snaps_to_upcoming_turn():
     whisper_segments = [DummyWhisperSegment(start=0.7, end=0.95, words=[])]
     diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A")]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker == "A"
 
@@ -225,7 +225,7 @@ def test_segment_in_post_pad_snaps_to_previous_turn():
     whisper_segments = [DummyWhisperSegment(start=5.05, end=5.25, words=[])]
     diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A")]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker == "A"
 
@@ -238,7 +238,7 @@ def test_segment_between_two_turns_snaps_to_closer():
         DiarizationSegment(segment=Segment(1.4, 3), speaker="B"),
     ]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker == "A"
 
@@ -248,7 +248,7 @@ def test_segment_far_from_any_turn_stays_none():
     whisper_segments = [DummyWhisperSegment(start=2.0, end=2.1, words=[])]
     diarization_segments = [DiarizationSegment(segment=Segment(0, 1), speaker="A")]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].speaker is None
 
@@ -268,7 +268,7 @@ def test_words_in_pad_regions_snap_to_turn():
     ]
     diarization_segments = [DiarizationSegment(segment=Segment(1, 5), speaker="A")]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     assert result[0].words is not None
     assert result[0].words[0].speaker == "A"
@@ -295,7 +295,7 @@ def test_word_between_two_turns_snaps_to_closer():
         DiarizationSegment(segment=Segment(1.4, 5), speaker="B"),
     ]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     words = [word for seg in result for word in (seg.words or [])]
     assert [word.speaker for word in words] == ["A", "A", "B"]
@@ -320,7 +320,7 @@ def test_word_far_from_any_turn_stays_none():
         DiarizationSegment(segment=Segment(4, 5), speaker="B"),
     ]
 
-    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))
+    result = list(merge_whisper_diarization(whisper_segments, diarization_segments))  # type: ignore
 
     words = [word for seg in result for word in (seg.words or [])]
     assert [word.speaker for word in words] == ["A", None, "B"]

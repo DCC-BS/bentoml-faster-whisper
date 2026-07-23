@@ -54,8 +54,8 @@ def _hide_task_routes_from_openapi() -> None:
                 del spec.paths[route]
         return spec
 
-    generate_spec._hides_task_routes = True  # type: ignore[attr-defined]
-    openapi.generate_spec = generate_spec
+    generate_spec._hides_task_routes = True  # type: ignore
+    openapi.generate_spec = generate_spec  # type: ignore
 
 
 _hide_task_routes_from_openapi()
@@ -108,15 +108,24 @@ class FasterWhisper:
         if WARMUP_ON_STARTUP:
             self.handler.warmup()
 
+    # BentoML only injects ctx when the annotation is exactly `Context`, so no `| None` here.
     @bentoml.api(route="/v1/audio/transcriptions", input_spec=TranscriptionRequest)  # type: ignore
-    def transcribe(self, ctx: bentoml.Context = None, **params: Any) -> WhisperResponse:
+    def transcribe(
+        self,
+        ctx: bentoml.Context = None,  # ty: ignore[invalid-parameter-default]
+        **params: Any,
+    ) -> WhisperResponse:
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
         self._set_response_content_type(ctx, request.response_format)
         return self.handler.transcribe_audio(request)
 
     @bentoml.api(route="/v1/audio/transcriptions/batch", input_spec=TranscriptionRequest)  # type: ignore
-    def batch_transcribe(self, ctx: bentoml.Context = None, **params: Any) -> WhisperResponse:
+    def batch_transcribe(
+        self,
+        ctx: bentoml.Context = None,  # ty: ignore[invalid-parameter-default]
+        **params: Any,
+    ) -> WhisperResponse:
         """Transcribe audio (kept for OpenAI API backward compatibility)."""
         request = TranscriptionRequest.from_dict(params)
         self._prepare_transcribe(request)
@@ -189,7 +198,11 @@ class FasterWhisper:
             segments.close()
 
     @bentoml.api(route="/v1/audio/translations", input_spec=TranslationRequest)  # type: ignore
-    def translate(self, ctx: bentoml.Context = None, **params: Any) -> WhisperResponse:
+    def translate(
+        self,
+        ctx: bentoml.Context = None,  # ty: ignore[invalid-parameter-default]
+        **params: Any,
+    ) -> WhisperResponse:
         request = TranslationRequest.from_dict(params)
         self._configure_vad_options(request)
         self._set_response_content_type(ctx, request.response_format)

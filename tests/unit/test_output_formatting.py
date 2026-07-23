@@ -57,7 +57,7 @@ def test_verbose_json_tolerates_word_less_segment():
     AssertionError (HTTP 500); the segment simply contributes no words."""
     seg = _segment(0.0, 2.0, "hello", None)
 
-    response = TranscriptionVerboseJsonResponse.from_segments([seg], _Info())  # type: ignore[arg-type]
+    response = TranscriptionVerboseJsonResponse.from_segments([seg], _Info())  # type: ignore
 
     assert response.words == []
     assert response.text == "hello"
@@ -68,6 +68,6 @@ def test_verbose_json_collects_words_when_present():
     words = [Word(start=0.0, end=1.0, word=" hi", probability=0.9)]
     seg = _segment(0.0, 1.0, " hi", words)
 
-    response = TranscriptionVerboseJsonResponse.from_segments([seg], _Info())  # type: ignore[arg-type]
+    response = TranscriptionVerboseJsonResponse.from_segments([seg], _Info())  # type: ignore
 
     assert response.words == words
