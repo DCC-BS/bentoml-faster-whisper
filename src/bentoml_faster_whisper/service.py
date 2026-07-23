@@ -36,6 +36,7 @@ configure_logging()
 
 
 _HIDDEN_TASK_ROUTE_SUFFIXES = ("/task/cancel", "/task/retry")
+_DIARIZATION_PROGRESS_SHARE = 0.3
 
 
 def _hide_task_routes_from_openapi() -> None:
@@ -143,32 +144,42 @@ class FasterWhisper:
         result: list[Segment] = []
 
         diarization_progress_callback = None
+        decode_progress_callback = None
+        report_progress = None
         if request.progress_id:
             self.progress_handler.add_progress(request.progress_id)
             progress_id = request.progress_id
+            highest = 0.0
 
-            def diarization_progress_callback(fraction: float) -> None:
+            def report_progress(progress: float, current_time: float = 0.0, duration: float = 0.0) -> None:
+                nonlocal highest
+                highest = max(highest, progress)
                 self.progress_handler.update_progress(
                     progress_id,
-                    ProgressResponse(progress=fraction * 0.3, currentTime=0, duration=0),
+                    ProgressResponse(progress=highest, currentTime=current_time, duration=duration),
                 )
+
+            def diarization_progress_callback(fraction: float) -> None:
+                report_progress(fraction * _DIARIZATION_PROGRESS_SHARE)
+
+            def decode_progress_callback(fraction: float) -> None:
+                report_progress(_DIARIZATION_PROGRESS_SHARE + (1 - _DIARIZATION_PROGRESS_SHARE) * fraction)
 
         segments = None
         try:
             segments, transcription_info = self.handler.prepare_audio_segments(
-                request, diarization_progress_callback=diarization_progress_callback
+                request,
+                diarization_progress_callback=diarization_progress_callback,
+                decode_progress_callback=decode_progress_callback,
             )
 
             for segment in segments:
-                if request.progress_id:
+                if report_progress is not None:
                     fraction = segment.end / transcription_info.duration if transcription_info.duration else 0.0
-                    self.progress_handler.update_progress(
-                        request.progress_id,
-                        ProgressResponse(
-                            progress=0.3 + 0.7 * fraction,
-                            currentTime=segment.end,
-                            duration=transcription_info.duration,
-                        ),
+                    report_progress(
+                        _DIARIZATION_PROGRESS_SHARE + (1 - _DIARIZATION_PROGRESS_SHARE) * fraction,
+                        current_time=segment.end,
+                        duration=transcription_info.duration,
                     )
 
                 result.append(segment)

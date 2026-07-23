@@ -2,7 +2,7 @@ import contextlib
 import dataclasses
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Iterable, Iterator
 
 import av
@@ -177,6 +177,7 @@ class FasterWhisperHandler:
         self,
         request: TranscriptionRequest,
         diarization_progress_callback: Callable[[float], None] | None = None,
+        decode_progress_callback: Callable[[float], None] | None = None,
     ):
         """Prepare audio segments, applying optional speaker diarization and language run splitting."""
         t0 = time.perf_counter()
@@ -226,11 +227,19 @@ class FasterWhisperHandler:
                         original_duration_s,
                         decode_options,
                         language_candidates=candidates,
+                        progress_callback=decode_progress_callback,
                     )
                 else:
                     resolved = [str(request.language)] * len(turns)
                     segments, transcription_info = self._decode_language_runs(
-                        whisper, decoded, turns, resolved, original_duration_s, decode_options, tag_language=False
+                        whisper,
+                        decoded,
+                        turns,
+                        resolved,
+                        original_duration_s,
+                        decode_options,
+                        tag_language=False,
+                        progress_callback=decode_progress_callback,
                     )
             else:
                 if decoded is None:
@@ -296,6 +305,7 @@ class FasterWhisperHandler:
         original_duration_s: float,
         decode_options: dict,
         language_candidates: list[str] | None = None,
+        progress_callback: Callable[[float], None] | None = None,
     ):
         """Detect language per speaker turn and decode same-language runs."""
         durations = [end - start for start, end in turns]
@@ -312,7 +322,14 @@ class FasterWhisperHandler:
             resolved = [language] * len(turns)
 
         return self._decode_language_runs(
-            whisper, decoded, turns, resolved, original_duration_s, decode_options, tag_language=True
+            whisper,
+            decoded,
+            turns,
+            resolved,
+            original_duration_s,
+            decode_options,
+            tag_language=True,
+            progress_callback=progress_callback,
         )
 
     def _decode_language_runs(
@@ -324,11 +341,23 @@ class FasterWhisperHandler:
         original_duration_s: float,
         decode_options: dict,
         tag_language: bool,
+        progress_callback: Callable[[float], None] | None = None,
     ):
         """Decode turns as bounded runs concurrently across worker threads."""
         whisper_config = self.model_manager.whisper_config
         concurrency = max(1, whisper_config.num_workers)
         runs = turns_to_language_runs(turns, resolved)
+
+        run_mass = [sum(end - start for start, end in run_intervals) for _, run_intervals in runs]
+        total_mass = sum(run_mass)
+        done_mass = 0.0
+
+        def report(index: int) -> None:
+            nonlocal done_mass
+            if progress_callback is None:
+                return
+            done_mass += run_mass[index]
+            progress_callback(min(1.0, done_mass / total_mass) if total_mass else 1.0)
 
         def decode_run(language: str, run_intervals: list[tuple[float, float]]):
             run_collapsed = collapse_decoded_to_speech(decoded, run_intervals)
@@ -343,10 +372,21 @@ class FasterWhisperHandler:
             return info, restored
 
         if concurrency > 1 and len(runs) > 1:
+            results: list = [None] * len(runs)
             with ThreadPoolExecutor(max_workers=concurrency) as executor:
-                results = list(executor.map(lambda run: decode_run(run[0], run[1]), runs))
+                futures = {
+                    executor.submit(decode_run, language, run_intervals): index
+                    for index, (language, run_intervals) in enumerate(runs)
+                }
+                for future in as_completed(futures):
+                    index = futures[future]
+                    results[index] = future.result()
+                    report(index)
         else:
-            results = [decode_run(language, intervals) for language, intervals in runs]
+            results = []
+            for index, (language, run_intervals) in enumerate(runs):
+                results.append(decode_run(language, run_intervals))
+                report(index)
 
         template_info = next((info for result in results if result is not None for info in [result[0]]), None)
         if template_info is None:

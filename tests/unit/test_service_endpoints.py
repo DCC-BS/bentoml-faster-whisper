@@ -47,7 +47,7 @@ class _StubHandler:
         self._segments = segments
         self._info = info
 
-    def prepare_audio_segments(self, request, diarization_progress_callback=None):
+    def prepare_audio_segments(self, request, diarization_progress_callback=None, decode_progress_callback=None):
         def gen():
             yield from self._segments
 
