@@ -44,7 +44,7 @@ MIN_WORD_COVERAGE = 0.85
 def diarized_segments() -> list[dict]:
     service = FasterWhisper()
     params = TranscriptionRequest.model_validate(
-        {"file": AUDIO, "diarization": True, "response_format": ResponseFormat.JSON_DIARZED}
+        {"file": AUDIO, "diarization": True, "response_format": ResponseFormat.JSON_DIARIZED}
     ).model_dump()
     return json.loads(service.transcribe(**params))["segments"]
 

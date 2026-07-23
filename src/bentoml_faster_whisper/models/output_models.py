@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from bentoml_faster_whisper.models.enums import ResponseFormat
 from bentoml_faster_whisper.models.transcription_json_diarized_response import (
-    TranscriptionJsonDiariexedResponse,
+    TranscriptionJsonDiarizedResponse,
 )
 from bentoml_faster_whisper.models.transcription_json_response import TranscriptionJsonResponse
 from bentoml_faster_whisper.models.transcription_verbose_json_response import TranscriptionVerboseJsonResponse
@@ -18,9 +18,20 @@ logger = logging.getLogger(__name__)
 WhisperResponse = (
     Annotated[str, ContentType("application/json")]
     | TranscriptionJsonResponse
-    | TranscriptionJsonDiariexedResponse
+    | TranscriptionJsonDiarizedResponse
     | TranscriptionVerboseJsonResponse
 )
+
+
+def content_type_for_format(response_format: ResponseFormat) -> str:
+    """HTTP Content-Type for a rendered response body. The endpoints declare a single
+    ``application/json`` return type (the JSON formats dominate), so text/vtt/srt would
+    otherwise be served mislabelled as JSON; the endpoint overrides the header per request."""
+    return {
+        ResponseFormat.TEXT: "text/plain; charset=utf-8",
+        ResponseFormat.VTT: "text/vtt; charset=utf-8",
+        ResponseFormat.SRT: "application/x-subrip; charset=utf-8",
+    }.get(response_format, "application/json")
 
 
 class ModelObject(BaseModel):
@@ -61,8 +72,8 @@ def segments_to_response(
         return segments_to_text(segments)
     elif response_format == ResponseFormat.JSON:
         return TranscriptionJsonResponse.from_segments(segments).model_dump_json()
-    elif response_format == ResponseFormat.JSON_DIARZED:
-        return TranscriptionJsonDiariexedResponse.from_segments(segments).model_dump_json()
+    elif response_format == ResponseFormat.JSON_DIARIZED:
+        return TranscriptionJsonDiarizedResponse.from_segments(segments).model_dump_json()
     elif response_format == ResponseFormat.VERBOSE_JSON:
         return TranscriptionVerboseJsonResponse.from_segments(segments, transcription_info).model_dump_json()
     elif response_format == ResponseFormat.VTT:
@@ -91,8 +102,8 @@ def segments_to_streaming_response(
                 data = segment.text
             elif response_format == ResponseFormat.JSON:
                 data = TranscriptionJsonResponse.from_segments([segment]).model_dump_json()
-            elif response_format == ResponseFormat.JSON_DIARZED:
-                data = TranscriptionJsonDiariexedResponse.from_segments([segment]).model_dump_json()
+            elif response_format == ResponseFormat.JSON_DIARIZED:
+                data = TranscriptionJsonDiarizedResponse.from_segments([segment]).model_dump_json()
             elif response_format == ResponseFormat.VERBOSE_JSON:
                 data = TranscriptionVerboseJsonResponse.from_segment(segment, transcription_info).model_dump_json()
             elif response_format == ResponseFormat.VTT:

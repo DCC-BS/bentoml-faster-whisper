@@ -58,7 +58,7 @@ def diarized_segments(handler):
             "language": "de",
             "diarization": True,
             "vad_filter": False,
-            "response_format": ResponseFormat.JSON_DIARZED,
+            "response_format": ResponseFormat.JSON_DIARIZED,
             "timestamp_granularities": ["segment"],
         }
     )

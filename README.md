@@ -2,6 +2,12 @@
     <h1 align="center">Serving FasterWhisper with BentoML</h1>
 </div>
 
+<p align="center">
+  <a href="https://github.com/DCC-BS/bentoml-faster-whisper/actions/workflows/ci.yml"><img src="https://github.com/DCC-BS/bentoml-faster-whisper/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/DCC-BS/bentoml-faster-whisper"><img src="https://codecov.io/gh/DCC-BS/bentoml-faster-whisper/graph/badge.svg" alt="codecov"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
+</p>
+
 ## What this service does
 
 This is a self-hosted speech-to-text API for audio and meeting recordings. Send it an audio
@@ -215,6 +221,39 @@ To debug through the FasterWhisper service, you can run the service with the fol
 ```bash
 uv run python launch.py
 ```
+
+### Tests and coverage
+
+| Command | Scope |
+| --- | --- |
+| `make test` | Fast unit tests (no model weights loaded) |
+| `make test-cov` | Same suite plus coverage — terminal report, `coverage.xml`, `junit.xml` |
+| `make test-model` | Unit tests that load a real Whisper model (slow, needs a GPU) |
+| `make test-all` | Every unit test, model-backed ones included |
+| `make integration` | Integration tests against a running service (`make run` first) |
+| `make test-performance` | Performance pytest suite (concurrency and decoding contracts) |
+| `make performance` | E2E load-test benchmark against a running service, writes `eval_results/load_test_results.json` |
+| `make eval-quality` | Quality evaluation (WER, CER, BLEU) against the curated test suite |
+
+Coverage is measured on the fast unit suite only, and that is what CI uploads to
+[Codecov](https://codecov.io/gh/DCC-BS/bentoml-faster-whisper). Integration and load tests
+talk to a separately served BentoML process over HTTP, so an in-process coverage run would
+not see the code they exercise; model-backed tests need a GPU and downloaded weights and do
+not run in CI either. Coverage is opt-in (`--cov`) rather than a default `addopts` entry, so
+the other suites stay unaffected.
+
+`make performance` is a benchmark, not a pass/fail suite: start the service (`make run`),
+then run it to record wall-clock and throughput numbers per scenario into
+`eval_results/load_test_results.json` (git-ignored, appended to across runs) — the reference
+point when judging whether a change actually made things faster. `make test-performance` is
+the pytest half of that story: assertions about concurrency and decoding behaviour that run
+without a served instance.
+
+Both `make performance` and `make eval-quality` need our Whisper evaluation pipeline set up
+locally — see the private [DCC-BS/research](https://github.com/DCC-BS/research) repository
+(`whisper-evaluation`) for the pipeline and its data. Point `WHISPER_EVAL_REPO` at your
+checkout of it (see `.env.example`). Without that setup, the fast unit suite, model tests and
+integration tests still run; only these two benchmark/eval targets are affected.
 
 ### Diagnosis UI
 

@@ -148,13 +148,8 @@ def model_loads_total():
     )
 
 
-# --- Recording helpers -------------------------------------------------------
-# Every decode path shares the same instrumentation contract, so the label
-# conventions and the divide-by-zero guard live here rather than being
-# reconstructed at each handler call site.
-
-
 def record_failure(stage: str, exc: BaseException) -> None:
+    """Record transcription failure counter labeled by stage and exception type."""
     transcription_failures().labels(stage, type(exc).__name__).inc()
 
 

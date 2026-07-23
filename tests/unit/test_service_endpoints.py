@@ -68,9 +68,9 @@ class _RecordingProgress:
         pass
 
 
-def _service(handler: _StubHandler) -> FasterWhisper:
+def _service(handler: _StubHandler) -> Any:
     service = FasterWhisper()
-    service.handler = handler
+    service.handler = handler  # type: ignore
     return service
 
 

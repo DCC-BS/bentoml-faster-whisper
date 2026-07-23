@@ -27,16 +27,21 @@ class Quantization(enum.StrEnum):
 
 
 class WhisperModelConfig(BaseModel):
-    """See https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/transcribe.py#L599."""
+    """Configuration for CTranslate2 model loading and execution.
+
+    See https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/transcribe.py#L599.
+    """
 
     inference_device: Device = Device.CUDA if torch.cuda.is_available() else Device.AUTO
     device_index: int | list[int] = 0
-    compute_type: Quantization = Quantization.FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
+    compute_type: Quantization = Quantization.INT8_FLOAT16 if torch.cuda.is_available() else Quantization.DEFAULT
     cpu_threads: int = 0
-    num_workers: int = 1
+    num_workers: int = Field(default_factory=lambda: int(os.getenv("WHISPER_NUM_WORKERS", "4")))
 
 
 class FasterWhisperConfig(BaseModel):
+    """Default parameters and thresholds for transcription and translation."""
+
     default_model_name: str = Field(default_factory=lambda: os.getenv("DEFAULT_WHISPER_MODEL", "large-v2"))
     default_prompt: str = ""
     default_language: Language | None = None
@@ -67,7 +72,7 @@ class FasterWhisperConfig(BaseModel):
         )
     )
     diarization: bool = True
-    condition_on_previous_text: bool = True
+    condition_on_previous_text: bool = False
     repetition_penalty: float = 1.0
     length_penalty: float = 1.0
     no_repeat_ngram_size: int = 0
@@ -114,8 +119,6 @@ class AppConfig(AbstractAppConfig):
 
     @classmethod
     def from_env(cls) -> "AppConfig":
-        # The per-field default_factory declarations above already build each sub-config
-        # (LanguageIdConfig.from_env included), so cls() reads the environment fully.
         return cls()
 
 
@@ -129,9 +132,6 @@ def get_config() -> AppConfig:
     return _config
 
 
-# Module-level aliases for the two sub-configs read at IMPORT time to build pydantic model
-# schemas (Field defaults / Annotated constraints in models/*, language_id util). Those are
-# frozen at class-definition time and can't be DI-injected. Runtime consumers (services,
-# container) take config via the DI container / get_config() instead.
+# Sub-config defaults exported at import time for static schema constraints.
 faster_whisper_config = get_config().faster_whisper
 language_id_config = get_config().language_id

@@ -74,11 +74,11 @@ def _run_diagnosis(
                 "timestamp_granularities": ["word"],
             }
         )
-        raw_response = _handler.transcribe_audio(request)
-        assert isinstance(raw_response, str)  # verbose_json serializes to a JSON string
+        # The declared union only exists to shape the OpenAPI schema; every branch renders to str.
+        raw_response = cast(str, _handler.transcribe_audio(request))
         response = json.loads(raw_response)
     finally:
-        del _handler.diarization.diarize  # restore the class method (instance attr shadowed it)
+        del _handler.diarization.diarize
 
     turns.sort(key=lambda t: t.start)
     turns_rows = [[_mmss(t.start), _mmss(t.end), round(t.end - t.start, 2), t.speaker] for t in turns]

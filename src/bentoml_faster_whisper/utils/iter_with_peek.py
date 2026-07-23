@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, cast
 
 # Distinct "nothing buffered" marker so a legitimately-yielded None is not mistaken
 # for an empty peek buffer (None is a valid stream item).
@@ -17,7 +17,7 @@ class IterWithPeek[T]:
         if self.peeked is not _UNSET:
             item = self.peeked
             self.peeked = _UNSET
-            return item  # type: ignore[return-value]
+            return cast(T, item)
         return next(self.it)
 
     def has_next(self) -> bool:
@@ -33,4 +33,4 @@ class IterWithPeek[T]:
     def peek(self) -> T:
         if self.peeked is _UNSET:
             self.peeked = next(self.it)
-        return self.peeked  # type: ignore[return-value]
+        return cast(T, self.peeked)

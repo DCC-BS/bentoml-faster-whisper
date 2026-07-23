@@ -7,7 +7,7 @@ packages = ["src/bentoml_faster_whisper"]
 
 [project]
 name = "bentoml-faster-whisper"
-version = "2.0.0"
+version = "2.0.1"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "bentoml==1.4.39",
@@ -26,7 +26,7 @@ dependencies = [
     "pydantic>=2.12.2",
     "ctranslate2~=4.8.0",
     "python-dotenv~=1.2.0",
-    "uvicorn~=0.50.1",
+    "uvicorn~=0.51.0",
     "pyannote-audio>=4.0",
     "huggingface-hub>=0.23",
     "numpy>=2.5.0",
@@ -40,6 +40,7 @@ dev = [
     "pre-commit>=4.2.0",
     "pytest~=9.1.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
     "openai>=1.65.1",
     "ruff>=0.15.18",
     "gradio>=6.20.0",
@@ -79,11 +80,26 @@ markers = [
     "integration: marks tests as integration tests (run with 'make integration')",
     "unit: mark tests as unit tests.",
     "model: mark tests that load a real Whisper model (slow, GPU-bound, run serially).",
+    "performance: mark tests as performance/load tests (run with 'make performance').",
 ]
 filterwarnings = [
     "ignore",
     "default:::bentoml_faster_whisper.*",
     "default:::tests.*",
+]
+
+[tool.coverage.run]
+source = ["src/bentoml_faster_whisper"]
+branch = true
+omit = ["tests/*", "tools/*"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
 ]
 
 [tool.ruff]

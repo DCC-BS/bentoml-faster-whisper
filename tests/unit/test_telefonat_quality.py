@@ -49,7 +49,7 @@ def diarized_segments(handler):
     reference = REFERENCE
     assert reference is not None  # guaranteed by the module skipif above
     request = TranscriptionRequest.model_validate(
-        {"file": AUDIO, "diarization": True, "response_format": ResponseFormat.JSON_DIARZED}
+        {"file": AUDIO, "diarization": True, "response_format": ResponseFormat.JSON_DIARIZED}
     )
     # handler is session-scoped and shared, so the stub must not outlive this transcription.
     with pytest.MonkeyPatch.context() as monkeypatch:

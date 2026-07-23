@@ -104,20 +104,20 @@ def validate_timestamp_granularities(response_format, timestamp_granularities, d
             # noqa: E501
         )
 
-    if "word" not in timestamp_granularities and response_format == ResponseFormat.VERBOSE_JSON:
+    # Do NOT require 'word' for verbose_json: the OpenAI spec makes
+    # timestamp_granularities optional and defaults it to ["segment"], so a plain
+    # `response_format=verbose_json` request (no granularities) must be accepted and
+    # return segment timestamps only. Rejecting it broke standard OpenAI SDK clients.
+
+    if response_format == ResponseFormat.JSON_DIARIZED and not diarization:
         raise InvalidArgument(
-            f"timestamp_granularities must contain 'word' when response_format is set to {ResponseFormat.VERBOSE_JSON}"
+            f"diarization must be enabled when response_format is set to {ResponseFormat.JSON_DIARIZED}"
         )
 
-    if response_format == ResponseFormat.JSON_DIARZED and not diarization:
-        raise InvalidArgument(
-            f"diarization must be enabled when response_format is set to {ResponseFormat.JSON_DIARZED}"
-        )
-
-    if "word" in timestamp_granularities and response_format == ResponseFormat.JSON_DIARZED:
+    if "word" in timestamp_granularities and response_format == ResponseFormat.JSON_DIARIZED:
         raise InvalidArgument(
             f"timestamp_granularities must not contain 'word' when response_format "
-            f"is set to {ResponseFormat.JSON_DIARZED}"
+            f"is set to {ResponseFormat.JSON_DIARIZED}"
         )
 
 

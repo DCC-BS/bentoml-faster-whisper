@@ -4,11 +4,11 @@ from bentoml_faster_whisper.models.small_segment import SmallSegment
 from bentoml_faster_whisper.utils.core import Segment
 
 
-class TranscriptionJsonDiariexedResponse(BaseModel):
+class TranscriptionJsonDiarizedResponse(BaseModel):
     segments: list[SmallSegment]
 
     @classmethod
-    def from_segments(cls, segments: list[Segment]) -> "TranscriptionJsonDiariexedResponse":
+    def from_segments(cls, segments: list[Segment]) -> "TranscriptionJsonDiarizedResponse":
         return cls(
             segments=[
                 SmallSegment(
