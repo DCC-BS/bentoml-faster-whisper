@@ -87,6 +87,11 @@ run: ## Run the BentoML service
 	@echo "🚀 Running the BentoML service"
 	@./scripts/run_varlock.sh uv run --env-file .env bentoml serve bentoml_faster_whisper.service:FasterWhisper -p 50001
 
+.PHONY: prod
+prod: ## Run the BentoML service in production-like mode (IS_PROD=true, JSON logging)
+	@echo "🚀 Running the BentoML service in production mode"
+	@IS_PROD=true ./scripts/run_varlock.sh uv run --env-file .env bentoml serve bentoml_faster_whisper.service:FasterWhisper -p 50001
+
 .PHONY: diagnose-ui
 diagnose-ui: ## Launch the Gradio UI comparing raw pyannote turns to the full pipeline output
 	@echo "🚀 Launching the diagnosis UI"

@@ -9,7 +9,9 @@ from bentoml_faster_whisper.config import faster_whisper_config
 from bentoml_faster_whisper.models.decode_params import DecodeParams
 from bentoml_faster_whisper.models.enums import Language
 from bentoml_faster_whisper.models.input_models import TimestampGranularities
-from bentoml_faster_whisper.models.output_models import logger
+from bentoml_faster_whisper.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _process_empty_language(language: None | Language | str | bytes) -> Language | None:
@@ -18,7 +20,9 @@ def _process_empty_language(language: None | Language | str | bytes) -> Language
             language = language.decode("utf-8")
         except UnicodeDecodeError:
             logger.warning(
-                f"Cannot decode bytes language: {language}. Using default: {faster_whisper_config.default_language}"
+                "Cannot decode bytes language; using default",
+                raw=language,
+                default=faster_whisper_config.default_language,
             )
             return faster_whisper_config.default_language
 
@@ -31,7 +35,11 @@ def _process_empty_language(language: None | Language | str | bytes) -> Language
     try:
         return Language(value=language)
     except ValueError:
-        logger.warning(f"Invalid language: {language}. Using default: {faster_whisper_config.default_language}")
+        logger.warning(
+            "Invalid language; using default",
+            language=language,
+            default=faster_whisper_config.default_language,
+        )
         # default_language is already a Language|None; return it directly — wrapping None
         # in Language() would raise, turning "fall back to auto-detect" into a 422.
         return faster_whisper_config.default_language

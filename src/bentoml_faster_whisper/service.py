@@ -1,4 +1,3 @@
-import logging
 import os
 from collections.abc import Generator
 from typing import Annotated, Any
@@ -24,10 +23,10 @@ from bentoml_faster_whisper.models.transcription_request import TranscriptionReq
 from bentoml_faster_whisper.models.translation_request import TranslationRequest
 from bentoml_faster_whisper.container import Container
 from bentoml_faster_whisper.utils.core import Segment
-from bentoml_faster_whisper.utils.logger import configure_logging
+from bentoml_faster_whisper.utils.logger import configure_logging, get_logger
 from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 fastapi = FastAPI()

@@ -23,6 +23,8 @@ import sys
 from collections.abc import Callable
 from typing import TypeVar, cast
 
+import warnings
+
 import ctranslate2
 from dcc_backend_common.logger import get_logger as dcc_get_logger
 from dcc_backend_common.logger import init_logger as dcc_init_logger
@@ -34,8 +36,17 @@ _F = TypeVar("_F", bound=Callable)
 # bentoml/circus, which run the BentoML server process.
 _PIPELINE_LOGGERS = ("bentoml", "uvicorn", "uvicorn.error", "uvicorn.asgi", "circus")
 
-# Libraries whose INFO chatter (per-connection open/close, download progress) pollutes logs.
-_QUIET_LIBRARIES = ("httpx", "httpcore", "urllib3", "huggingface_hub", "filelock")
+# Libraries whose INFO chatter (per-connection open/close, download progress, audio processing) pollutes logs.
+_QUIET_LIBRARIES = (
+    "httpx",
+    "httpcore",
+    "urllib3",
+    "huggingface_hub",
+    "filelock",
+    "faster_whisper",
+    "pyannote",
+    "pyannote.audio",
+)
 
 
 def _exception_info(exc_info: object) -> tuple[type[BaseException] | None, BaseException | None]:
@@ -132,12 +143,18 @@ def _configure_library_loggers(level: int) -> None:
         lib_logger.propagate = True
         lib_logger.setLevel(level)
 
+    quiet_level = level if level <= logging.DEBUG else max(level, logging.WARNING)
     for name in _QUIET_LIBRARIES:
-        logging.getLogger(name).setLevel(max(level, logging.WARNING))
+        logging.getLogger(name).setLevel(quiet_level)
 
 
 def configure_logging() -> None:
     ctranslate2.set_log_level(logging.WARN)
+
+    warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy.*")
+    warnings.filterwarnings("ignore", category=UserWarning, module="pyannote.*")
+    warnings.filterwarnings("ignore", message=".*TensorFloat-32.*")
+
     # IS_PROD is required by dcc_init_logger() (get_env_or_throw); its default lives in
     # .env.schema (IS_PROD=false), loaded by varlock at runtime and by --env-file .env in tests.
     dcc_init_logger()

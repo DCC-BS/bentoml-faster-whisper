@@ -6,7 +6,9 @@ from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 
 from bentoml_faster_whisper.config import faster_whisper_config
 from bentoml_faster_whisper.models.enums import ResponseFormat, TimestampGranularity
-from bentoml_faster_whisper.models.output_models import logger
+from bentoml_faster_whisper.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _validate_served_model(model: str) -> str:
@@ -70,7 +72,9 @@ def _process_empty_response_format(response_format: str | ResponseFormat | bytes
             response_format = response_format.decode("utf-8")
         except UnicodeDecodeError:
             logger.warning(
-                f"Cannot decode bytes response_format: {response_format}. Using default: {faster_whisper_config.default_response_format}"
+                "Cannot decode bytes response_format; using default",
+                raw=response_format,
+                default=faster_whisper_config.default_response_format,
             )
             return ResponseFormat(faster_whisper_config.default_response_format)
 
@@ -84,7 +88,9 @@ def _process_empty_response_format(response_format: str | ResponseFormat | bytes
         return ResponseFormat(response_format)
     except ValueError:
         logger.warning(
-            f"Invalid response format: {response_format}. Using default: {faster_whisper_config.default_response_format}"
+            "Invalid response format; using default",
+            response_format=response_format,
+            default=faster_whisper_config.default_response_format,
         )
         return ResponseFormat(faster_whisper_config.default_response_format)
 

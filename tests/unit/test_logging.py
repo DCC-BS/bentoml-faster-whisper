@@ -59,8 +59,9 @@ class TestLoggingConfiguration(unittest.TestCase):
             self.assertEqual(logging.getLogger("bentoml").level, logging.DEBUG)
             self.assertEqual(logging.getLogger("uvicorn").level, logging.DEBUG)
 
-            # Ensure quiet libraries stay at least WARNING even if global is DEBUG
-            self.assertEqual(logging.getLogger("httpx").level, logging.WARNING)
+            # Ensure quiet libraries inherit DEBUG level when global LOG_LEVEL is DEBUG
+            self.assertEqual(logging.getLogger("httpx").level, logging.DEBUG)
+            self.assertEqual(logging.getLogger("faster_whisper").level, logging.DEBUG)
 
     def test_client_error_filter(self):
         import sys

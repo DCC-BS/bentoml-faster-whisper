@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import threading
 import time
 
@@ -8,8 +7,9 @@ from faster_whisper import WhisperModel
 
 from bentoml_faster_whisper.config import WhisperModelConfig
 from bentoml_faster_whisper.utils import metrics
+from bentoml_faster_whisper.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WhisperModelProvider:
@@ -38,7 +38,7 @@ class WhisperModelProvider:
         return self._model
 
     def _load(self) -> WhisperModel:
-        logger.debug("Loading model %s", self.model_id)
+        logger.debug("Loading model", model_id=self.model_id)
         start = time.perf_counter()
         model = WhisperModel(
             self.model_id,
@@ -52,5 +52,5 @@ class WhisperModelProvider:
         metrics.model_load_duration().observe(load_duration)
         metrics.model_loads_total().inc()
         metrics.models_loaded().inc()
-        logger.info("Model %s loaded in %.2fs", self.model_id, load_duration)
+        logger.info("Model loaded", model_id=self.model_id, load_duration=load_duration)
         return model

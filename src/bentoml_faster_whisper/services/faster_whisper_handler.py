@@ -1,6 +1,5 @@
 import contextlib
 import dataclasses
-import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Iterable, Iterator
@@ -38,10 +37,11 @@ from bentoml_faster_whisper.utils.speech_regions import (
     speech_intervals_to_chunks,
     turns_to_language_runs,
 )
+from bentoml_faster_whisper.utils.logger import get_logger
 from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
 from bentoml_faster_whisper.utils.whisper_diarization_merger import merge_whisper_diarization
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _AUDIO_DECODE_ERRORS = (av.error.FFmpegError,)
 
@@ -115,16 +115,16 @@ class FasterWhisperHandler:
         try:
             whisper = self.model_manager.get()
             self._warm_decode(whisper)
-            logger.info("Warmed Whisper model %s", self.model_manager.model_id)
+            logger.info("Warmed Whisper model", model_id=self.model_manager.model_id)
         except Exception:
-            logger.exception("Whisper warmup failed for model %s", self.model_manager.model_id)
+            logger.exception("Whisper warmup failed", model_id=self.model_manager.model_id)
 
         if warm_diarization:
             try:
                 self.diarization.load()
                 logger.info("Warmed diarization pipeline")
             except Exception:
-                logger.exception("Diarization warmup failed (continuing without a pre-loaded pipeline)")
+                logger.warning("Diarization warmup failed; continuing without pre-loaded pipeline", exc_info=True)
 
     @staticmethod
     def _warm_decode(whisper: WhisperModel) -> None:

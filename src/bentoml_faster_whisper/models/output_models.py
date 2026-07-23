@@ -1,4 +1,3 @@
-import logging
 from typing import Annotated, Generator, Iterable, Literal
 
 from bentoml.validators import ContentType
@@ -12,8 +11,9 @@ from bentoml_faster_whisper.models.transcription_json_diarized_response import (
 from bentoml_faster_whisper.models.transcription_json_response import TranscriptionJsonResponse
 from bentoml_faster_whisper.models.transcription_verbose_json_response import TranscriptionVerboseJsonResponse
 from bentoml_faster_whisper.utils.core import Segment, segments_to_srt, segments_to_text, segments_to_vtt
+from bentoml_faster_whisper.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 WhisperResponse = (
     Annotated[str, ContentType("application/json")]

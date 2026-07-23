@@ -107,7 +107,7 @@ def _as_wav(audio_path: str) -> Iterator[str]:
             )
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode(errors="replace")
-            logger.error("ffmpeg conversion failed", stderr=stderr)
+            logger.warning("ffmpeg audio conversion failed", stderr=stderr)
             raise InvalidArgument("Failed to decode audio file") from e
         yield tmp_path
     finally:
@@ -182,7 +182,7 @@ class DiarizationService:
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
 
-        logger.info("Diarization completed")
+        logger.debug("Diarization completed")
 
         for turn, speaker in cast(Any, output).speaker_diarization:
             yield DiarizationSegment(turn, speaker)
