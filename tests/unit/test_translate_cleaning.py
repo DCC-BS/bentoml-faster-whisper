@@ -7,11 +7,17 @@ model drives the path without loading real weights.
 """
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 from bentoml_faster_whisper.models.enums import ResponseFormat
 from bentoml_faster_whisper.models.translation_request import TranslationRequest
+from bentoml_faster_whisper.services.diarization_service import DiarizationService
 from bentoml_faster_whisper.services.faster_whisper_handler import FasterWhisperHandler
+from bentoml_faster_whisper.services.model_manager import WhisperModelProvider
+
+AUDIO_FILE = Path("./tests/assets/example_audio.mp3")
 
 
 def _segment(text: str, start: float, end: float, no_speech_prob: float = 0.1, avg_logprob: float = -0.1):
@@ -44,8 +50,17 @@ class _FakeWhisper:
 
 
 def _handler(segments) -> FasterWhisperHandler:
-    model_manager = SimpleNamespace(get=lambda: _FakeWhisper(segments), model_id="fake")
-    return FasterWhisperHandler(model_manager=model_manager, diarization=None)
+    model_manager = cast(
+        WhisperModelProvider,
+        SimpleNamespace(get=lambda: _FakeWhisper(segments), model_id="fake"),
+    )
+    return FasterWhisperHandler(model_manager=model_manager, diarization=cast(DiarizationService, None))
+
+
+def _text(response) -> str:
+    """JSON response_format always returns a serialized string; narrow the union for the type checker."""
+    assert isinstance(response, str)
+    return json.loads(response)["text"]
 
 
 def test_translate_drops_blacklisted_hallucination():
@@ -55,10 +70,9 @@ def test_translate_drops_blacklisted_hallucination():
             _segment(" hello world", 2.0, 4.0),
         ]
     )
-    request = TranslationRequest.model_validate({"file": "test.mp3", "response_format": ResponseFormat.JSON})
+    request = TranslationRequest.model_validate({"file": AUDIO_FILE, "response_format": ResponseFormat.JSON})
 
-    response = handler.translate_audio(request)
-    text = json.loads(response)["text"]
+    text = _text(handler.translate_audio(request))
 
     assert "mooji" not in text
     assert "hello world" in text
@@ -72,10 +86,9 @@ def test_translate_drops_no_speech_segment():
             _segment(" real speech", 2.0, 4.0),
         ]
     )
-    request = TranslationRequest.model_validate({"file": "test.mp3", "response_format": ResponseFormat.JSON})
+    request = TranslationRequest.model_validate({"file": AUDIO_FILE, "response_format": ResponseFormat.JSON})
 
-    response = handler.translate_audio(request)
-    text = json.loads(response)["text"]
+    text = _text(handler.translate_audio(request))
 
     assert "phantom" not in text
     assert "real speech" in text

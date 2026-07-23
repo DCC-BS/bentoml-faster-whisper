@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Quality Evaluation Harness for bentoml-faster-whisper.
 
-Reuses the ASR evaluation suite from /home/yanick/code/research/whisper-evaluation
-to calculate WER (Word Error Rate), CER (Character Error Rate), and BLEU scores
-against the curated test suite dataset.
+Reuses the external whisper-evaluation ASR suite to calculate WER (Word Error
+Rate), CER (Character Error Rate), and BLEU scores against the curated test
+suite dataset.
+
+Point the harness at your checkout of that repository with the
+WHISPER_EVAL_REPO environment variable (or the --eval-repo flag).
 
 All results and predictions are written to 'eval_results/' (ignored by git).
 """
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -21,8 +25,8 @@ logging.basicConfig(
 logger = logging.getLogger("eval_quality")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-EVAL_REPO_DIR = Path("/home/yanick/code/research/whisper-evaluation")
-DEFAULT_DATA_DIR = EVAL_REPO_DIR / "data"
+EVAL_REPO_ENV_VAR = "WHISPER_EVAL_REPO"
+DEFAULT_EVAL_REPO_DIR = PROJECT_ROOT.parent / "whisper-evaluation"
 OUTPUT_DIR = PROJECT_ROOT / "eval_results"
 
 
@@ -35,10 +39,19 @@ def main():
         help="Base API URL of the running ASR service (default: http://localhost:50001/v1)",
     )
     parser.add_argument(
+        "--eval-repo",
+        type=str,
+        default=os.environ.get(EVAL_REPO_ENV_VAR, str(DEFAULT_EVAL_REPO_DIR)),
+        help=(
+            "Path to the whisper-evaluation repository checkout "
+            f"(default: ${EVAL_REPO_ENV_VAR} or {DEFAULT_EVAL_REPO_DIR})"
+        ),
+    )
+    parser.add_argument(
         "--data-dir",
         type=str,
-        default=str(DEFAULT_DATA_DIR),
-        help=f"Path to curated test data directory (default: {DEFAULT_DATA_DIR})",
+        default=None,
+        help="Path to curated test data directory (default: <eval-repo>/data)",
     )
     parser.add_argument(
         "--model",
@@ -55,13 +68,18 @@ def main():
 
     args = parser.parse_args()
 
-    data_dir = Path(args.data_dir).resolve()
-    if not data_dir.exists():
-        logger.error("Test data directory not found: %s", data_dir)
+    eval_repo_dir = Path(args.eval_repo).expanduser().resolve()
+    if not eval_repo_dir.exists():
+        logger.error(
+            "whisper-evaluation repository not found at %s (set %s or pass --eval-repo)",
+            eval_repo_dir,
+            EVAL_REPO_ENV_VAR,
+        )
         sys.exit(1)
 
-    if not EVAL_REPO_DIR.exists():
-        logger.error("Research evaluation suite repository not found at %s", EVAL_REPO_DIR)
+    data_dir = Path(args.data_dir).expanduser().resolve() if args.data_dir else eval_repo_dir / "data"
+    if not data_dir.exists():
+        logger.error("Test data directory not found: %s", data_dir)
         sys.exit(1)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -69,6 +87,7 @@ def main():
     logger.info("==========================================================")
     logger.info("Starting ASR Quality Evaluation Suite")
     logger.info("API URL: %s", args.api_url)
+    logger.info("Eval Repo: %s", eval_repo_dir)
     logger.info("Data Dir: %s", data_dir)
     logger.info("Model: %s | Language: %s", args.model, args.language)
     logger.info("Output Directory: %s (Git-ignored)", OUTPUT_DIR)
@@ -78,7 +97,7 @@ def main():
         "uv",
         "run",
         "--project",
-        str(EVAL_REPO_DIR),
+        str(eval_repo_dir),
         "asr-eval",
         "openai_api",
         "--model",
@@ -93,7 +112,7 @@ def main():
 
     logger.info("Executing command: %s", " ".join(cmd))
     try:
-        proc = subprocess.run(cmd, cwd=str(EVAL_REPO_DIR), check=True, text=True)
+        proc = subprocess.run(cmd, cwd=str(eval_repo_dir), check=True, text=True)
         logger.info("Quality evaluation completed successfully with exit code %d", proc.returncode)
     except subprocess.CalledProcessError as e:
         logger.error("Quality evaluation failed with exit code %d", e.returncode)

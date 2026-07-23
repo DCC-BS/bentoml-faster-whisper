@@ -40,6 +40,7 @@ dev = [
     "pre-commit>=4.2.0",
     "pytest~=9.1.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
     "openai>=1.65.1",
     "ruff>=0.15.18",
     "gradio>=6.20.0",
@@ -85,6 +86,20 @@ filterwarnings = [
     "ignore",
     "default:::bentoml_faster_whisper.*",
     "default:::tests.*",
+]
+
+[tool.coverage.run]
+source = ["src/bentoml_faster_whisper"]
+branch = true
+omit = ["tests/*", "tools/*"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
 ]
 
 [tool.ruff]

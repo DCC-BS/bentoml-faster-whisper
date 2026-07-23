@@ -2,7 +2,7 @@
 
 Executes end-to-end performance measurements on long audio assets from tests/assets/
 for single requests and multi-concurrent requests (with and without diarization).
-Writes structured tracking results into load_test_results.json.
+Writes structured tracking results into eval_results/load_test_pytest_results.json.
 Only executed when explicitly running 'make performance' or 'pytest -m performance'.
 """
 
@@ -13,6 +13,7 @@ import pytest
 from tools.load_test import (
     DEFAULT_LONG_AUDIO,
     DEFAULT_RADIO_AUDIO,
+    RESULTS_DIR,
     get_audio_duration_seconds,
     run_concurrency_batch,
     run_single_request_in_process,
@@ -77,8 +78,9 @@ def test_multi_concurrent_requests_load_test(faster_whisper_service, long_audio_
         f"Mean Latency: {stats['mean_s']:.2f}s | P90 Latency: {stats['p90_s']:.2f}s"
     )
 
-    # Save results to load_test_results.json for history tracking
-    output_file = Path("load_test_results.json").resolve()
+    # Save results for history tracking
+    output_file = RESULTS_DIR / "load_test_pytest_results.json"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "audio": long_audio_path.name,
         "concurrency": concurrency,

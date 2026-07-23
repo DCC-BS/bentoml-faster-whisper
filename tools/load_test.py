@@ -41,6 +41,8 @@ logging.basicConfig(
 logger = logging.getLogger("load_test")
 
 DEFAULT_ASSETS_DIR = PROJECT_ROOT / "tests" / "assets"
+RESULTS_DIR = PROJECT_ROOT / "eval_results"
+DEFAULT_RESULTS_FILE = RESULTS_DIR / "load_test_results.json"
 DEFAULT_LONG_AUDIO = (
     DEFAULT_ASSETS_DIR
     / "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3"
@@ -419,8 +421,8 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default="load_test_results.json",
-        help="Output JSON results file path (default: load_test_results.json)",
+        default=str(DEFAULT_RESULTS_FILE),
+        help=f"Output JSON results file path (default: {DEFAULT_RESULTS_FILE})",
     )
 
     args = parser.parse_args()
@@ -547,6 +549,7 @@ def main():
     }
 
     output_file = Path(args.output).resolve()
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     history = []
     if output_file.exists():
         try:

@@ -69,7 +69,7 @@ def decode_audio_in_memory_contract(audio_bytes: bytes) -> tuple[np.ndarray, dic
     try:
         import av
 
-        container = av.open(buf)
+        container = av.open(buf, mode="r")
         stream = container.streams.audio[0]
         resampler = av.AudioResampler(format="flt", layout="mono", rate=16000)
         frames = []
@@ -263,7 +263,6 @@ def test_async_progress_and_models_endpoints():
     for route_path in target_routes:
         if route_path not in route_endpoints:
             pytest.xfail(f"TDD Contract Assertion: Route '{route_path}' will be populated on async endpoint refactor.")
-            continue
         endpoint = route_endpoints[route_path]
         is_async = inspect.iscoroutinefunction(endpoint)
         if not is_async:

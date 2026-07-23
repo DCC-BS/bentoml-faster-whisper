@@ -67,22 +67,27 @@ def test_transcribe_response_format(faster_whisper_service, response_format, tim
     assert transcription is not None
 
 
-def test_response_format_verbose_timestamp_granularities_segment(
-    faster_whisper_service,
-):
-    """OpenAI drop-in: verbose_json with the default segment granularity (no 'word')
-    must be accepted and return segment-level timestamps, not rejected."""
+@pytest.mark.parametrize(
+    "granularity_params",
+    [
+        pytest.param({}, id="omitted"),
+        pytest.param({"timestamp_granularities": [TimestampGranularity.SEGMENT]}, id="explicit-segment"),
+    ],
+)
+def test_response_format_verbose_timestamp_granularities_segment(faster_whisper_service, granularity_params):
+    """OpenAI drop-in: verbose_json with the default segment granularity (no 'word'),
+    whether the field is omitted or passed explicitly, must be accepted and return
+    segment-level timestamps, not rejected."""
     # given
     file = Path("./tests/assets/example_audio.mp3")
     response_format = ResponseFormat.VERBOSE_JSON
-    timestamp_granularities = [TimestampGranularity.SEGMENT]
 
     # when
     transcription = faster_whisper_service.transcribe(
         **_extend_params(
             file=file,
             response_format=response_format,
-            timestamp_granularities=timestamp_granularities,
+            **granularity_params,
         )
     )
 

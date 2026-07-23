@@ -56,4 +56,4 @@ class TestIntegration:
             data_chunks.append(data_chunk)
         client.close()
 
-        assert data_chunks is not None
+        assert data_chunks, "streaming_transcribe yielded no chunks"

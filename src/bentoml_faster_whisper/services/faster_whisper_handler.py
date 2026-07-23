@@ -43,7 +43,7 @@ from bentoml_faster_whisper.utils.whisper_diarization_merger import merge_whispe
 
 logger = logging.getLogger(__name__)
 
-_AUDIO_DECODE_ERRORS = (av.error.FFmpegError, RuntimeError)
+_AUDIO_DECODE_ERRORS = (av.error.FFmpegError,)
 
 
 @contextlib.contextmanager
@@ -152,15 +152,16 @@ class FasterWhisperHandler:
         whisper = self.model_manager.get()
         word_timestamps = request.response_format == ResponseFormat.VERBOSE_JSON
         decode_options = self._decode_options(request, word_timestamps)
+        with _audio_decode_errors_as_invalid():
+            decoded = decode_audio(str(request.file), sampling_rate=WHISPER_SAMPLE_RATE)
         try:
-            with _audio_decode_errors_as_invalid():
-                segments, transcription_info = whisper.transcribe(
-                    str(request.file),
-                    task=Task.TRANSLATE,
-                    vad_filter=request.vad_filter,
-                    vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
-                    **decode_options,
-                )
+            segments, transcription_info = whisper.transcribe(
+                decoded,
+                task=Task.TRANSLATE,
+                vad_filter=request.vad_filter,
+                vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
+                **decode_options,
+            )
             segments = Segment.from_faster_whisper_segments(segments)
             cleaned = clean_transcription_segments(segments, transcription_info, text_language="en")
             response = segments_to_response(cleaned, transcription_info, request.response_format)
@@ -232,14 +233,16 @@ class FasterWhisperHandler:
                         whisper, decoded, turns, resolved, original_duration_s, decode_options, tag_language=False
                     )
             else:
-                with _audio_decode_errors_as_invalid():
-                    segments, transcription_info = whisper.transcribe(
-                        str(request.file),
-                        language=request.language,
-                        vad_filter=request.vad_filter,
-                        vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
-                        **decode_options,
-                    )
+                if decoded is None:
+                    with _audio_decode_errors_as_invalid():
+                        decoded = decode_audio(str(request.file), sampling_rate=WHISPER_SAMPLE_RATE)
+                segments, transcription_info = whisper.transcribe(
+                    decoded,
+                    language=request.language,
+                    vad_filter=request.vad_filter,
+                    vad_parameters=VadOptions(**request.vad_parameters.model_dump()),
+                    **decode_options,
+                )
                 segments = Segment.from_faster_whisper_segments(segments)
 
             if dia_segments:

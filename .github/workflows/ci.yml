@@ -7,17 +7,50 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
-  backend-ci:
+  quality:
     uses: DCC-BS/ci-workflows/.github/workflows/python-backend-ci.yml@v9
     with:
       python_versions: '["3.13"]'
       quality_python_version: "3.13"
       uv_version: "0.11.21"
       check_command: "make check"
-      # ffmpeg/ffprobe are a stated project prerequisite (README) but not present on
-      # the hosted runner; helpers/utils.py::get_audio_duration shells out to ffprobe
-      # and is covered by a fast unit test. make test also needs an --env-file to
-      # exist (it doesn't read secrets for the fast suite, just fails without the
-      # file). make test-model/integration need a GPU and downloaded model weights,
-      # so they stay out of CI.
-      test_command: "sudo apt-get update && sudo apt-get install -y ffmpeg && touch .env && make test"
+
+  # Not the reusable workflow: it has no Codecov upload step. ffmpeg and an empty
+  # .env are runner prerequisites of the fast suite.
+  tests:
+    name: Tests & Coverage (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: [quality]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13"]
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up the environment
+        uses: DCC-BS/ci-workflows/actions/setup-python-env@v9
+        with:
+          python-version: ${{ matrix.python-version }}
+          uv-version: "0.11.21"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Run unit tests with coverage
+        run: touch .env && make test-cov
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./junit.xml
