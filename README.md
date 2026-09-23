@@ -189,6 +189,12 @@ meeting). An invalid code is rejected with a validation error rather than silent
 It only applies when `language` is unset and diarization is on; setting `language` disables
 per-region detection entirely.
 
+**Known limitation:** a short turn (about 1-4s) can still come out in the wrong one of the
+file's languages, because Whisper's language ID is unreliable on short clips. Audio in one
+language should be sent with `language` (Swiss German, for example, is otherwise partly
+detected as Dutch); for a known mix, `language_candidates` at least rules out languages that
+cannot occur. See `docs/technical_architecture.md` for the measurements.
+
 #### Tuning
 
 The pipeline's tunables live in `config.py` (`LanguageIdConfig`) and can be overridden via

@@ -90,6 +90,12 @@ This document captures the architectural decisions, performance optimizations, a
 - With an explicit `language`, every run decodes in it and segments keep `language=None` — per-segment language is only reported when it was auto-detected per region.
 - When no turn is long enough to detect on, all speech is collapsed once and detected a single time, like the single-language path.
 
+
+### Known Limitation: Short Turns in the Wrong Language
+- A turn of about 1-4s can still be decoded in the wrong language of a multilingual file (teams_konferenz.mp4 at 1257s: a German question decoded as French; lichtenstein.mp3 at 14-22s: a Spanish sentence decoded as German). Pinned by `tests/unit/test_turn_language_regressions.py` as strict xfail.
+- **Cause**: Whisper's own language ID on short clips, before any smoothing (the Spanish half-sentence scores de 0.64 with es outside the top 3).
+- **Why not tuned away** (simulated on the real per-turn distributions, 2026-09-23): `LID_SWITCH_PENALTY=3.0` fixes the German question but flips a confirmed-real Spanish turn to English; `LID_MIN_TURN_S=1.5` fixes it but flips a confirmed-real French "D'accord." to German and changes ~20 unverifiable turns per file. `language_candidates` removes stray English/Dutch decodes but cannot choose between the meeting's own languages. None of these recovers the Spanish sentence.
+- **Mitigation for clients**: pass `language` for single-language audio (skips per-turn detection entirely, e.g. Swiss German recordings otherwise partly detected as Dutch), or `language_candidates` when the language mix is known.
 ---
 
 ## 5. Quality & Hallucination Mitigation
