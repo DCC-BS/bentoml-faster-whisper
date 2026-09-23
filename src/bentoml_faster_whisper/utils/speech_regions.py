@@ -17,6 +17,11 @@ MERGE_GAP_S = 1.0
 MAX_RUN_S = positive_env("WHISPER_MAX_DECODE_RUN_S", 60.0, float)
 _SPLIT_TOLERANCE_S = 0.1
 
+RUN_TAIL_SLIVER_S = positive_env("WHISPER_RUN_TAIL_SLIVER_S", 1.0, float)
+RUN_TAIL_ANOMALY_S = positive_env("WHISPER_RUN_TAIL_ANOMALY_S", 2.0, float)
+_SEEK_FRAME_S = 160 / WHISPER_SAMPLE_RATE
+_PUNCTUATION = set("\"'“¿([{-.。,，!！?？:：”)]}、")
+
 
 class _TimedSegment(Protocol):
     @property
@@ -154,6 +159,50 @@ def turns_to_language_runs(
         if intervals:
             runs.append((language, intervals))
     return runs
+
+
+def _word_anomaly_score(word) -> float:
+    """faster-whisper's hallucination heuristic: improbable, near-zero or overlong words."""
+    duration = word.end - word.start
+    score = 0.0
+    if word.probability < 0.15:
+        score += 1.0
+    if duration < 0.133:
+        score += (0.133 - duration) * 15
+    if duration > 2.0:
+        score += duration - 2.0
+    return score
+
+
+def _is_segment_anomaly(segment) -> bool:
+    words = [w for w in segment.words or [] if w.word.strip() not in _PUNCTUATION][:8]
+    if not words:
+        return False
+    score = sum(_word_anomaly_score(w) for w in words)
+    return score >= 3 or score + 0.01 >= len(words)
+
+
+def drop_run_tail_hallucinations(
+    fw_segments: Iterable,
+    run_duration_s: float,
+    sliver_s: float = RUN_TAIL_SLIVER_S,
+    anomaly_s: float = RUN_TAIL_ANOMALY_S,
+) -> list:
+    """Drop the decode windows at the very end of a run that hold no real speech."""
+    segments = list(fw_segments)
+    windows: dict[int, list] = {}
+    for seg in segments:
+        windows.setdefault(seg.seek, []).append(seg)
+
+    dropped = set()
+    for seek, window in windows.items():
+        remaining_s = run_duration_s - seek * _SEEK_FRAME_S
+        if remaining_s < sliver_s or (remaining_s < anomaly_s and any(map(_is_segment_anomaly, window))):
+            dropped.add(seek)
+            logger.debug(
+                "Dropped run-tail window", remaining_s=round(remaining_s, 2), text="".join(s.text for s in window)
+            )
+    return [seg for seg in segments if seg.seek not in dropped]
 
 
 def restore_and_split_segments(
