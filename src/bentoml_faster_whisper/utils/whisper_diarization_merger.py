@@ -1,5 +1,5 @@
 import copy
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from bentoml_faster_whisper.services.diarization_service import DiarizationSegment
 from bentoml_faster_whisper.utils.core import Segment as WhisperSegment
@@ -18,7 +18,7 @@ class _PeekWithMemory[T]:
 
     def __init__(self, it: Iterable[T]):
         self._it = IterWithPeek(it)
-        self.last: Optional[T] = None
+        self.last: T | None = None
 
     def __iter__(self):
         return self
@@ -59,7 +59,7 @@ def _find_best_speaker(
     segments: Iterable[DiarizationSegment],
     start_time: float,
     end_time: float,
-) -> tuple[Optional[str], float]:
+) -> tuple[str | None, float]:
     """Speaker of the turn with the largest overlap, plus that overlap in seconds."""
     best_intersection = 0.0
     best_speaker = None
@@ -76,9 +76,9 @@ def _find_best_speaker(
 def _nearest_speaker(
     start_time: float,
     end_time: float,
-    neighbors: Iterable[Optional[DiarizationSegment]],
+    neighbors: Iterable[DiarizationSegment | None],
     tolerance: float = SPEECH_PAD_S,
-) -> Optional[str]:
+) -> str | None:
     """Snap an item with no diarization overlap to the closest turn within ``tolerance``.
 
     Transcription decode windows are padded by ``SPEECH_PAD_S`` around each speaker
@@ -88,8 +88,8 @@ def _nearest_speaker(
     only if it is within ``tolerance`` — beyond that we keep ``None`` rather than
     inventing a speaker across genuine silence.
     """
-    best_distance: Optional[float] = None
-    best_speaker: Optional[str] = None
+    best_distance: float | None = None
+    best_speaker: str | None = None
 
     for turn in neighbors:
         if turn is None:
@@ -112,7 +112,7 @@ def _nearest_speaker(
     return best_speaker
 
 
-def _majority_speaker(words: list, word_speakers: list[Optional[str]]) -> Optional[str]:
+def _majority_speaker(words: list, word_speakers: list[str | None]) -> str | None:
     duration: dict[str, float] = {}
     for word, speaker in zip(words, word_speakers):
         if speaker is not None:
@@ -126,11 +126,11 @@ _MIN_SPLIT_PIECE_S = 0.5
 
 def _split_segment_by_speaker(
     seg: WhisperSegment,
-    split_speakers: list[Optional[str]],
-    word_speakers: list[Optional[str]],
+    split_speakers: list[str | None],
+    word_speakers: list[str | None],
 ) -> Iterable[WhisperSegment]:
     """Split segment where consecutive words were assigned different speakers."""
-    groups: list[tuple[Optional[str], list]] = []
+    groups: list[tuple[str | None, list]] = []
     for word, speaker in zip(seg.words or [], split_speakers):
         if groups and (speaker is None or groups[-1][0] is None or speaker == groups[-1][0]):
             group_speaker, group_words = groups[-1]
@@ -156,7 +156,7 @@ def _split_segment_by_speaker(
             speaker = groups[1][0]
             groups[1] = (speaker, groups[0][1] + groups[1][1])
             del groups[0]
-    merged: list[tuple[Optional[str], list]] = []
+    merged: list[tuple[str | None, list]] = []
     for speaker, words in groups:
         if merged and merged[-1][0] == speaker:
             merged[-1][1].extend(words)
@@ -197,8 +197,8 @@ def merge_whisper_diarization(
 
         if seg.words:
             word_candidates = _PeekWithMemory(iter(candidates))
-            word_speakers: list[Optional[str]] = []
-            split_speakers: list[Optional[str]] = []
+            word_speakers: list[str | None] = []
+            split_speakers: list[str | None] = []
 
             for word in seg.words:
                 current_word_candidates = _pack_segements_in_range(word_candidates, word.start, word.end)

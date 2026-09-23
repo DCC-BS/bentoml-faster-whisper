@@ -8,6 +8,7 @@ Only executed when explicitly running 'make performance' or 'pytest -m performan
 
 import json
 from pathlib import Path
+
 import pytest
 
 from tools.load_test import (

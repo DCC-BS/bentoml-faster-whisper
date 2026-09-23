@@ -5,7 +5,7 @@ progress bar surviving a zero-duration transcription_info.
 """
 
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
@@ -32,7 +32,7 @@ def _segment(**overrides: Any) -> Segment:
     return Segment(**{**defaults, **overrides})
 
 
-def _info(language: str = "de", duration: float = 10.0, log_prob_threshold: Optional[float] = -1.0):
+def _info(language: str = "de", duration: float = 10.0, log_prob_threshold: float | None = -1.0):
     return SimpleNamespace(
         language=language,
         duration=duration,

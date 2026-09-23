@@ -35,7 +35,6 @@ from bentoml_faster_whisper.utils.speech_regions import (
     restore_and_split_segments,
 )
 
-
 # ============================================================================
 # Helper Utilities for Audio Decoding Contracts
 # ============================================================================

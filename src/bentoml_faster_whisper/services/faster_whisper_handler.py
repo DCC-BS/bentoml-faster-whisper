@@ -1,8 +1,8 @@
 import contextlib
 import dataclasses
 import time
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Iterable, Iterator
 
 import av
 import numpy as np
@@ -29,6 +29,7 @@ from bentoml_faster_whisper.utils.language_id import (
     resolve_language_inventory,
     viterbi_smooth_languages,
 )
+from bentoml_faster_whisper.utils.logger import get_logger
 from bentoml_faster_whisper.utils.speech_regions import (
     WHISPER_SAMPLE_RATE,
     collapse_decoded_to_speech,
@@ -38,7 +39,6 @@ from bentoml_faster_whisper.utils.speech_regions import (
     speech_intervals_to_chunks,
     turns_to_language_runs,
 )
-from bentoml_faster_whisper.utils.logger import get_logger
 from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
 from bentoml_faster_whisper.utils.whisper_diarization_merger import merge_whisper_diarization
 

@@ -65,6 +65,7 @@ class TestLoggingConfiguration(unittest.TestCase):
 
     def test_client_error_filter(self):
         import sys
+
         from pydantic import BaseModel, ValidationError
         from starlette.exceptions import HTTPException
 

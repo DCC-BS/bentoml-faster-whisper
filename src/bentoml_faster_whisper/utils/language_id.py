@@ -12,7 +12,7 @@ below exist for tests and default to the config values.
 """
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 from faster_whisper import WhisperModel

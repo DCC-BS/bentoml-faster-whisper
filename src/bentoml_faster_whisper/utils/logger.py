@@ -20,10 +20,9 @@ import inspect
 import logging
 import os
 import sys
+import warnings
 from collections.abc import Callable
 from typing import TypeVar, cast
-
-import warnings
 
 import ctranslate2
 from dcc_backend_common.logger import get_logger as dcc_get_logger
@@ -79,7 +78,7 @@ def _is_client_error(exc_type: type[BaseException], exc_value: BaseException | N
     if issubclass(exc_type, BentoMLException):
         source = exc_value if exc_value is not None else exc_type
         try:
-            return getattr(source, "error_code").value < 500
+            return getattr(source, "error_code").value < 500  # noqa: B009
         except Exception:
             return False
     return False
@@ -122,9 +121,9 @@ class ClientErrorFilter(logging.Filter):
                             status_code = exc_value.error_code.value
                         except Exception:
                             pass
-                        error_msg = f"BentoML Error ({status_code}): {str(exc_value)}"
+                        error_msg = f"BentoML Error ({status_code}): {exc_value!s}"
                     else:
-                        error_msg = f"Client Error: {str(exc_value)}"
+                        error_msg = f"Client Error: {exc_value!s}"
                 except Exception as e:
                     error_msg = f"Client Error parsing failed: {e}"
 
@@ -149,7 +148,7 @@ def _configure_library_loggers(level: int) -> None:
 
 
 def configure_logging() -> None:
-    ctranslate2.set_log_level(logging.WARN)
+    ctranslate2.set_log_level(logging.WARNING)
 
     warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy.*")
     warnings.filterwarnings("ignore", category=UserWarning, module="pyannote.*")

@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi import Path as FastAPIPath
 
 from bentoml_faster_whisper.config import faster_whisper_config
+from bentoml_faster_whisper.container import Container
 from bentoml_faster_whisper.models.input_models import (
     validate_timestamp_granularities,
 )
@@ -21,7 +22,6 @@ from bentoml_faster_whisper.models.output_models import (
 from bentoml_faster_whisper.models.progress_response import ProgressResponse
 from bentoml_faster_whisper.models.transcription_request import TranscriptionRequest
 from bentoml_faster_whisper.models.translation_request import TranslationRequest
-from bentoml_faster_whisper.container import Container
 from bentoml_faster_whisper.utils.core import Segment
 from bentoml_faster_whisper.utils.logger import configure_logging, get_logger
 from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
@@ -192,7 +192,7 @@ class FasterWhisper:
                 self.progress_handler.remove_progress(request.progress_id)
 
     @bentoml.api(route="/v1/audio/transcriptions/stream", input_spec=TranscriptionRequest)  # type: ignore
-    def streaming_transcribe(self, **params: Any) -> Generator[str, None, None]:
+    def streaming_transcribe(self, **params: Any) -> Generator[str]:
         request = TranscriptionRequest.from_dict(params)
 
         self._prepare_transcribe(request)

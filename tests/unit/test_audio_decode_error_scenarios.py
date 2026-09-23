@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock, patch
+
 import av
 import pytest
 from bentoml.exceptions import InvalidArgument
@@ -13,15 +14,13 @@ from bentoml_faster_whisper.services.faster_whisper_handler import (
 
 
 def test_audio_decode_errors_as_invalid_catches_ffmpeg_error():
-    with pytest.raises(InvalidArgument, match="Failed to decode audio file"):
-        with _audio_decode_errors_as_invalid():
-            raise av.error.InvalidDataError(1, "Corrupt audio data")
+    with pytest.raises(InvalidArgument, match="Failed to decode audio file"), _audio_decode_errors_as_invalid():
+        raise av.error.InvalidDataError(1, "Corrupt audio data")
 
 
 def test_audio_decode_errors_as_invalid_does_not_catch_runtime_error():
-    with pytest.raises(RuntimeError, match="CUDA out of memory"):
-        with _audio_decode_errors_as_invalid():
-            raise RuntimeError("CUDA out of memory")
+    with pytest.raises(RuntimeError, match="CUDA out of memory"), _audio_decode_errors_as_invalid():
+        raise RuntimeError("CUDA out of memory")
 
 
 def test_prepare_audio_segments_propagates_transcribe_runtime_error():

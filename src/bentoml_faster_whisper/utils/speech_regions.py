@@ -1,6 +1,7 @@
 import itertools
 import math
-from typing import Iterable, Protocol
+from collections.abc import Iterable
+from typing import Protocol
 
 import numpy as np
 from faster_whisper.transcribe import restore_speech_timestamps

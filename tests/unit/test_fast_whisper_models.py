@@ -1,7 +1,7 @@
 import asyncio
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from bentoml_faster_whisper.config import faster_whisper_config
