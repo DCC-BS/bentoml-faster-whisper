@@ -300,13 +300,10 @@ def _window(seek_s: float, words: list[tuple[float, float, str, float]], seg_id:
     )
 
 
-# The last speech window of a run, decoded normally (real speech, plausible word timings).
 _SPEECH = _window(0.0, [(20.0, 20.4, " externe", 0.9), (20.4, 20.8, " Tools", 0.9), (20.8, 21.3, " geben.", 0.9)])
 
 
 def test_run_tail_sliver_window_is_dropped():
-    """The OWUI 164.9 s case: after the last word faster-whisper seeks to its end, and the
-    remaining ~0.4 s of run tail is decoded as a window of its own, zero-padded to 30 s."""
     sliver = _window(21.3, [(21.3, 21.4, " Bis", 0.2), (21.4, 21.6, " zum", 0.9), (21.6, 21.7, " nächsten Mal.", 0.9)])
 
     kept = sr.drop_run_tail_hallucinations([_SPEECH, sliver], run_duration_s=21.7)
@@ -315,8 +312,6 @@ def test_run_tail_sliver_window_is_dropped():
 
 
 def test_anomalous_tail_window_is_dropped_whole():
-    """Regionaljournal 750 s: "Bis zum nächsten Mal." has zero-length words, "Ciao." in the
-    same window looks normal on its own; both come from the same empty tail window."""
     outro = _window(20.0, [(20.0, 20.0, " Bis", 0.1), (20.0, 20.0, " zum", 0.9), (20.0, 20.06, " nächsten Mal.", 0.9)])
     ciao = _window(20.0, [(20.3, 20.46, " Ciao.", 0.8)], seg_id=1)
 
@@ -326,8 +321,6 @@ def test_anomalous_tail_window_is_dropped_whole():
 
 
 def test_plausible_short_utterance_near_run_end_is_kept():
-    """A real closing word decoded in its own window 1.5 s before the run end has normal
-    word timings, so it must survive (the Telefonat "Tschüss!" guard)."""
     goodbye = _window(20.0, [(20.2, 20.7, " Tschüss!", 0.8)])
 
     kept = sr.drop_run_tail_hallucinations([_SPEECH, goodbye], run_duration_s=21.5)
@@ -336,8 +329,6 @@ def test_plausible_short_utterance_near_run_end_is_kept():
 
 
 def test_anomalous_window_away_from_run_end_is_kept():
-    """Real speech stretched over long words (RainerZentrigen: a serial number read out
-    slowly) scores as anomalous; only the run tail may be dropped, never the body."""
     slow = _window(0.0, [(10.0, 13.5, " Seriennummer", 0.9), (13.5, 17.0, " 34D45403333AAA.", 0.9)])
 
     kept = sr.drop_run_tail_hallucinations([slow], run_duration_s=30.0)

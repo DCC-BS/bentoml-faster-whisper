@@ -1,23 +1,8 @@
 """Regression: segments labelled by ear as hallucination must not come back, and
-segments labelled as real speech must still be transcribed.
+segments labelled as real speech must still be transcribed (coverage only, not text).
 
-The labels come from a manual review (2026-09-23) of every segment in the test
-assets that looked suspicious: outro phrases, text inside diarization pauses,
-impossible speaking rates, low-confidence text at the end of a decode run. Most
-confirmed hallucinations are YouTube outros ("Bis zum nächsten Mal.", "Vielen Dank
-fürs Zuschauen.") produced by the near-empty last window of a decode run.
-
-The "real" labels are the guard in the other direction: they were flagged by the
-same heuristics but are spoken, so a hallucination filter that removes them brings
-back the missing-segments bug. They are checked for coverage only (some emitted
-segment overlaps them), not for text, because several are real speech transcribed
-badly (wrong language) and a decode change may legitimately reword them.
-
-Labels for the committed assets live in tests/assets/reviewed_hallucinations.json;
-labels and replayed pyannote turns for the internal recordings live next to them in
-tests/assets/internal/ (gitignored), so those cases skip when the recordings are
-absent. Diarization is replayed so the decode-run layout, which decides where the
-hallucinations appear, is deterministic. Real Whisper decode, hence ``model``.
+Labels: tests/assets/reviewed_hallucinations.json, plus tests/assets/internal/ (gitignored,
+skipped when absent). Diarization is replayed so the run layout is deterministic.
 """
 
 import json
@@ -49,14 +34,9 @@ AUDIO = {
     "Telefonat.m4a": (INTERNAL / "Telefonat.m4a", INTERNAL / "Telefonat_m4a_turns.json"),
 }
 
-# A hallucination counts as back when a segment starting this close to the labelled
-# one says (nearly) the same thing. Timestamps shift a little between decodes; the
-# text of these stock phrases does not.
 HALLUCINATION_WINDOW_S = 1.5
 HALLUCINATION_MIN_SIMILARITY = 0.8
 
-# Real speech counts as transcribed when an emitted segment overlaps the labelled
-# span, allowing for the word-boundary jitter between decodes.
 REAL_SPEECH_TOLERANCE_S = 0.3
 
 
@@ -74,9 +54,6 @@ def _label_id(label: dict) -> str:
 
 LABELS = _labels()
 
-# Confirmed hallucinations the run-tail filter cannot remove without also removing real
-# speech: "So it's okay." has the same no_speech_prob/avg_logprob/position profile as the
-# real run-end utterances "au moins." and "Sie konnte schon ihre..." labelled below.
 KNOWN_MISSES = {("teams_konferenz.mp4", 3150.04): "indistinguishable from real low-confidence run-end speech"}
 
 

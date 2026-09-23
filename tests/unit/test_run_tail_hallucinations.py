@@ -1,23 +1,9 @@
-"""Regression: the end of a decode run must not produce outro hallucinations.
+"""Regression: decode-run ends must not produce outro hallucinations.
 
-OWUIOberflaeche.wav is a 3 min German screen-cast narration (single speaker) with a
-few multi-second pauses. Since diarized decodes are split into runs of at most
-``WHISPER_MAX_DECODE_RUN_S`` (the long-form seek drift fix), every run boundary is a
-place where Whisper's last window of that run holds only a sub-second tail of
-padding/silence, zero-padded to 30 s. Whisper fills it with YouTube-outro phrases
-("Das war's für heute.", "Bis zum nächsten Mal.", "Tschüss.", "Vielen Dank fürs
-Zuschauen."), none of which are spoken anywhere in the recording. They come out with
-``no_speech_prob`` ~0.6 and ``avg_logprob`` ~-0.75, so the dual-condition silence
-filter (``> 0.9`` AND ``< -1.0``) lets them through.
-
-Observed in production at 164.9-167.1 s ("Bis zum nächsten Mal." / "Tschüss."
-between "... Open Case Law geben." and "Das heisst, hier ..."). With the default
-60 s run cap and the replayed pyannote turns below, a run ends at 41.7 s and the same
-hallucination appears there; a 30 s cap moves a run boundary into the 164.9 s pause
-and reproduces the production transcript.
-
-Diarization is replayed from a committed fixture (real pyannote output for this file)
-so the run layout is deterministic; the Whisper decode is real, hence ``model``.
+OWUIOberflaeche.wav has no outro phrases spoken; production transcribed "Bis zum nächsten
+Mal." / "Tschüss." in the 164.9-167.1 s pause. See docs/technical_architecture.md
+("Run-Tail Hallucinations"). Diarization is replayed from a fixture so the run layout is
+deterministic.
 """
 
 import functools
@@ -39,8 +25,6 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 AUDIO = ASSETS / "OWUIOberflaeche.wav"
 TURNS = ASSETS / "owui_turns.json"
 
-# Outro phrases Whisper emits on a near-empty trailing window. None is spoken in the
-# recording (checked by ear), so any occurrence is a hallucination.
 OUTRO_PHRASES = [
     "Bis zum nächsten Mal",
     "Tschüss",
@@ -48,9 +32,6 @@ OUTRO_PHRASES = [
     "Zuschauen",
 ]
 
-# Pauses between pyannote turns that are silent by ear. Whisper may place a word a
-# little into a pause (turn edges are padded), but a segment that lies entirely inside
-# one has no speech under it.
 MIN_PAUSE_S = 1.0
 
 
@@ -70,8 +51,7 @@ def _pauses(turns: list[DiarizationSegment]) -> list[tuple[float, float]]:
     return pauses
 
 
-# 60 s is the production default and ends a run at 41.7 s; 30 s additionally ends a
-# run inside the 164.9-167.1 s pause, the layout seen in production.
+# 30 s puts a run end into the 164.9 s pause, the layout seen in production.
 @pytest.fixture(scope="module", params=[60.0, 30.0], ids=lambda cap: f"max_run_{cap:.0f}s")
 def diarized_segments(request, handler) -> list[dict]:
     transcription_request = TranscriptionRequest.model_validate(
@@ -122,7 +102,6 @@ def test_no_segment_inside_a_speech_pause(diarized_segments):
 
 
 def test_production_gap_has_no_text(diarized_segments):
-    """The exact production symptom: nothing between '... geben.' (164.8 s) and 'Das heisst' (~166.8 s)."""
     between = [
         _describe(segment) for segment in diarized_segments if segment["start"] >= 164.85 and segment["end"] <= 166.8
     ]

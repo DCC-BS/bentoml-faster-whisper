@@ -1,30 +1,7 @@
-"""Regression: short turns must not be decoded in a language their speaker isn't using.
+"""Regression: short turns decoded in a language their speaker isn't using.
 
-Found in the manual hallucination review (2026-09-23): two stretches of real speech
-come out as gibberish because their turn was decoded in the wrong language.
-
-- teams_konferenz.mp4, ~1256.9-1258.2 s: SPEAKER_07 speaks German before and after
-  ("... wenn es eines geben würde?" / "Nein, im Gegenteil."). Whisper LID on this
-  1.3 s turn alone says fr (0.71) and the smoothing keeps it, so the question
-  "Was würdest du begrüssen?" is decoded as "Parce que le resto peut être brûlissant."
-  Forced to German the same audio decodes as "Das würde es doch begrüssen."
-- lichtenstein.mp3, ~14.3-21.9 s: the interpreter says one Spanish sentence
-  ("Bienvenidos a la oficina de extranjería y pasaportes del principado de
-  Liechtenstein."), which pyannote splits into two turns. LID on the second half,
-  dense with proper nouns, says de (0.64), so it is decoded as German gibberish
-  ("Ich laufe die Diener der S-Bahn-Karriere im Passaport ...").
-
-Diarization is replayed from the turns recorded for the review (both recordings are
-internal and gitignored, so the cases skip without them). Real Whisper decode and the
-real turn-level LID + Viterbi path (no ``language`` given), hence ``model``.
-
-Known limitation (xfail, strict): the error starts in Whisper's own language ID on
-short clips, before any smoothing. Raising ``LID_SWITCH_PENALTY`` (3.0) or
-``LID_MIN_TURN_S`` (1.5) fixes the teams turn but flips other confirmed-real turns
-(the Spanish "Sí, y el trabajo que soñamos...", the French "D'accord.") to the wrong
-language, and nothing recovers the Liechtenstein sentence (Whisper gives de 0.64 with
-es not in its top 3). These tests start passing if a model or LID change fixes it;
-strict xfail then flags them.
+Known limitation, pinned as strict xfail; see docs/technical_architecture.md ("Known
+Limitation: Short Turns in the Wrong Language"). Internal recordings, skipped when absent.
 """
 
 import json
@@ -47,9 +24,7 @@ pytestmark = [
 
 INTERNAL = Path(__file__).resolve().parent.parent / "assets" / "internal"
 
-# (recording, start_s, end_s, expected language, canary words). The window covers the
-# misdetected speech; every segment overlapping it must carry the expected language and
-# the text must contain each canary (lower-cased substring, spelling-tolerant stems).
+# (recording, start_s, end_s, spoken language, words the correct transcript contains)
 CASES = [
     ("teams_konferenz.mp4", 1256.8, 1258.3, "de", ["begrüss"]),
     ("lichtenstein.mp3", 14.3, 21.9, "es", ["oficina", "pasaporte"]),
