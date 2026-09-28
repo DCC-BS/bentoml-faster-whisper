@@ -3,8 +3,9 @@ import os
 import subprocess
 import tempfile
 import threading
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping, cast
+from typing import Any, cast
 
 import av
 import pyannote.audio as _pyannote_audio
@@ -170,17 +171,16 @@ class DiarizationService:
         self.load()
         assert self.pipeline is not None
 
-        with _as_wav(audio_path) as wav_path:
-            with self._lock:
-                try:
-                    if progress_callback is not None:
-                        with _DiarizationProgressHook(progress_callback) as hook:
-                            output = self.pipeline(wav_path, num_speakers=num_speaker, hook=hook)
-                    else:
-                        output = self.pipeline(wav_path, num_speakers=num_speaker)
-                finally:
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+        with _as_wav(audio_path) as wav_path, self._lock:
+            try:
+                if progress_callback is not None:
+                    with _DiarizationProgressHook(progress_callback) as hook:
+                        output = self.pipeline(wav_path, num_speakers=num_speaker, hook=hook)
+                else:
+                    output = self.pipeline(wav_path, num_speakers=num_speaker)
+            finally:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
         logger.debug("Diarization completed")
 

@@ -42,7 +42,7 @@ TimestampGranularities = Annotated[list[TimestampGranularity], BeforeValidator(_
 
 
 def _convert_temperature(
-    temperature: str | int | float | list[float],
+    temperature: str | float | list[float],
 ) -> list[float]:
     if isinstance(temperature, list):
         return temperature
@@ -107,7 +107,6 @@ def validate_timestamp_granularities(response_format, timestamp_granularities, d
             "It only makes sense to provide `timestamp_granularities[]` when `response_format` is set to "
             "`verbose_json`. See https://platform.openai.com/docs/api-reference/audio/createTranscription#audio"
             "-createtranscription-timestamp_granularities."
-            # noqa: E501
         )
 
     # Do NOT require 'word' for verbose_json: the OpenAI spec makes

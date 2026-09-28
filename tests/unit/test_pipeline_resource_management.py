@@ -111,8 +111,8 @@ def test_progress_handler_instances_are_isolated():
 def test_active_task_survives_eviction_by_newer_registrations(monkeypatch):
     """A long-running task that keeps reporting progress must not be evicted ahead of
     newer but idle entries once the tracking cap is exceeded."""
-    from bentoml_faster_whisper.services import progress_handler as progress_module
     from bentoml_faster_whisper.models.progress_response import ProgressResponse
+    from bentoml_faster_whisper.services import progress_handler as progress_module
 
     monkeypatch.setattr(progress_module, "_MAX_TRACKED_PROGRESS", 3)
     handler = ProgressHandler()

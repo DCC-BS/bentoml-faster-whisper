@@ -536,7 +536,7 @@ def main():
 
     # Compile Master Benchmark Output Document
     output_data = {
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "git_commit": get_git_commit_hash(),
         "audio_file": audio_path.name,
         "audio_duration_s": audio_duration_s,

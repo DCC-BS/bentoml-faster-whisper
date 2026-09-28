@@ -40,6 +40,19 @@ This document captures the architectural decisions, performance optimizations, a
 - **Solution**: Continuous spans are partitioned into runs no longer than `WHISPER_MAX_DECODE_RUN_S` (default `60.0`s ≈ two 30s windows — enough decode context for quality, short enough that drift doesn't accumulate; drift was measured to reappear around ~90s). The single-language and per-turn-language paths share the same run machinery.
 - **Split point**: each cut falls on the *widest* silence gap between consecutive turns (ties break toward the centre for balanced recursion, not peeling one turn at a time), always on a turn boundary so no word is cut. A greedy first-fit split can land a boundary mid-sentence, where the next run's decode drifts and drops its opening words. Gaps are measured against the furthest end reached so far (not the previous turn's end) so overlapping turns still yield a real non-negative gap.
 
+### Run-Tail Hallucinations (`WHISPER_RUN_TAIL_SLIVER_S`, `WHISPER_RUN_TAIL_ANOMALY_S`)
+- **Problem**: every decode run ends with a little non-speech (the `SPEECH_PAD_S` pad plus up to half the gap to the next run). With word timestamps on (always, on the diarized path), faster-whisper moves `seek` to the last word's end, so that sub-second tail is decoded as a window of its own, zero-padded to 30s. Whisper fills it with YouTube outros ("Das war's für heute.", "Bis zum nächsten Mal.", "Tschüss.", "Vielen Dank fürs Zuschauen."). They score `no_speech_prob` ~0.6 and `avg_logprob` ~-0.7, so neither faster-whisper's skip rule nor the cleaner's dual condition catches them. Run splitting multiplied the number of run ends, so it multiplied these hallucinations.
+- **Rule** (`drop_run_tail_hallucinations`, applied per run before timestamps are restored): drop a whole decode window (all segments sharing its `seek`) when it starts less than `WHISPER_RUN_TAIL_SLIVER_S` (1.0s) before the run end, or less than `WHISPER_RUN_TAIL_ANOMALY_S` (2.0s) before it and any of its segments is word-anomalous (faster-whisper's `hallucination_silence_threshold` heuristic: words near-zero length, over 2s, or with probability below 0.15). The decision is per window, because a window's normal-looking segments ("Ciao.") are hallucinated just like the anomalous ones next to them.
+- **Why only the run tail**: a real closing word decoded inside a normal speech window is never touched (Telefonat "Tschüss!"), and anomalous-looking real speech in the run body is kept (a serial number read out slowly has overlong words).
+- **Rejected alternatives** (measured on the 33-file German eval, the test assets and 47 hand-labelled segments in `tests/unit/test_reviewed_hallucinations.py`):
+  - passing `hallucination_silence_threshold` to faster-whisper: it changes seeking for the whole decode, rewrites text, drops a real sentence at 1.0s and still leaves 6 of 14 labelled hallucinations at 2.0s;
+  - stricter `no_speech_prob`/`avg_logprob` thresholds: they drop real speech, since real windows can score `no_speech_prob > 0.9`;
+  - an anomaly filter without the tail restriction: it drops long real segments;
+  - trimming the run-end pad: it changes the run layout and rewrites ~500 words;
+  - dropping segments without diarization overlap: most outros sit inside the padded turn edge, so it misses them.
+- **Result**: WER 0.4535 → 0.4516, CER 0.1549 → 0.1533, all eval outros removed, no reference word lost.
+- **Known miss**: a low-confidence hallucination at a run end whose words look normal ("So it's okay.") has the same profile as real low-confidence run-end speech ("au moins."), so it is kept rather than risk dropping real speech.
+
 ### Pre-Cutting Audio vs `clip_timestamps`
 - **Mechanism**: audio is cut down to pyannote/VAD speech turns *before* decoding — the same thing faster-whisper does internally for its silero VAD. Silence never reaches the decoder; `restore_and_split_segments()` maps results back onto the original timeline afterward, snapping boundaries to the speech regions so the merge lines up.
 - **Rationale**: passing the regions as `clip_timestamps` is not equivalent — each clip tail gets zero-padded to a full 30s window and the model's timestamp tokens drift there, unclamped.
@@ -77,6 +90,12 @@ This document captures the architectural decisions, performance optimizations, a
 - With an explicit `language`, every run decodes in it and segments keep `language=None` — per-segment language is only reported when it was auto-detected per region.
 - When no turn is long enough to detect on, all speech is collapsed once and detected a single time, like the single-language path.
 
+
+### Known Limitation: Short Turns in the Wrong Language
+- A turn of about 1-4s can still be decoded in the wrong language of a multilingual file (teams_konferenz.mp4 at 1257s: a German question decoded as French; lichtenstein.mp3 at 14-22s: a Spanish sentence decoded as German). Pinned by `tests/unit/test_turn_language_regressions.py` as strict xfail.
+- **Cause**: Whisper's own language ID on short clips, before any smoothing (the Spanish half-sentence scores de 0.64 with es outside the top 3).
+- **Why not tuned away** (simulated on the real per-turn distributions, 2026-09-23): `LID_SWITCH_PENALTY=3.0` fixes the German question but flips a confirmed-real Spanish turn to English; `LID_MIN_TURN_S=1.5` fixes it but flips a confirmed-real French "D'accord." to German and changes ~20 unverifiable turns per file. `language_candidates` removes stray English/Dutch decodes but cannot choose between the meeting's own languages. None of these recovers the Spanish sentence.
+- **Mitigation for clients**: pass `language` for single-language audio (skips per-turn detection entirely, e.g. Swiss German recordings otherwise partly detected as Dutch), or `language_candidates` when the language mix is known.
 ---
 
 ## 5. Quality & Hallucination Mitigation

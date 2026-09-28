@@ -189,6 +189,12 @@ meeting). An invalid code is rejected with a validation error rather than silent
 It only applies when `language` is unset and diarization is on; setting `language` disables
 per-region detection entirely.
 
+**Known limitation:** a short turn (about 1-4s) can still come out in the wrong one of the
+file's languages, because Whisper's language ID is unreliable on short clips. Audio in one
+language should be sent with `language` (Swiss German, for example, is otherwise partly
+detected as Dutch); for a known mix, `language_candidates` at least rules out languages that
+cannot occur. See `docs/technical_architecture.md` for the measurements.
+
 #### Tuning
 
 The pipeline's tunables live in `config.py` (`LanguageIdConfig`) and can be overridden via
@@ -214,6 +220,8 @@ word is cut — and decodes each run separately.
 | Env var | Default | Meaning |
 | --- | --- | --- |
 | `WHISPER_MAX_DECODE_RUN_S` | `60.0` | Max wall-clock span (s) of speech decoded in one call. ~2 Whisper windows: enough context for quality, short enough that drift (observed to reappear around ~90 s) does not accumulate. Lower it if long files still drop segments; raise it for slightly more decode context. |
+| `WHISPER_RUN_TAIL_SLIVER_S` | `1.0` | A decode run's last window is dropped when it starts less than this many seconds before the run end. Such a window holds only padding/silence and Whisper fills it with outro hallucinations ("Bis zum nächsten Mal."). |
+| `WHISPER_RUN_TAIL_ANOMALY_S` | `2.0` | Up to this many seconds before the run end, the last window is also dropped when any of its segments has anomalous word timings (near-zero or overlong words, very low word probability). |
 
 ### Local Development
 

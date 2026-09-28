@@ -1,0 +1,74 @@
+[
+  {
+    "end": 41.36,
+    "file": "OWUIOberflaeche.wav",
+    "note": "",
+    "start": 41.28,
+    "text": " Das war's f\u00fcr heute.",
+    "verdict": "hallucination"
+  },
+  {
+    "end": 41.66,
+    "file": "OWUIOberflaeche.wav",
+    "note": "",
+    "start": 41.54,
+    "text": " Bis zum n\u00e4chsten Mal.",
+    "verdict": "hallucination"
+  },
+  {
+    "end": 299.82,
+    "file": "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3",
+    "note": "",
+    "start": 299.6,
+    "text": " Ja, danke.",
+    "verdict": "real"
+  },
+  {
+    "end": 750.26,
+    "file": "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3",
+    "note": "",
+    "start": 750.2,
+    "text": " Bis zum n\u00e4chsten Mal.",
+    "verdict": "hallucination"
+  },
+  {
+    "end": 750.64,
+    "file": "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3",
+    "note": "",
+    "start": 750.48,
+    "text": " Ciao.",
+    "verdict": "hallucination"
+  },
+  {
+    "end": 1076.37,
+    "file": "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3",
+    "note": "",
+    "start": 1075.19,
+    "text": " Das heisst, man kann davon ausgehen,",
+    "verdict": "real"
+  },
+  {
+    "end": 1186.33,
+    "file": "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3",
+    "note": "",
+    "start": 1185.21,
+    "text": " weil man jetzt nicht mehr \u00fcber das spricht.",
+    "verdict": "real"
+  },
+  {
+    "end": 1313.74,
+    "file": "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3",
+    "note": "",
+    "start": 1312.2,
+    "text": " Die Regierung sagt, sie heike das jetzt schon, aber sie machen es nicht.",
+    "verdict": "real"
+  },
+  {
+    "end": 1316.26,
+    "file": "Regionaljournal_Basel_Baselland_radio_AUDI20260710_NR_0011_1004cf68be404710b30a996ac4f1ff93.mp3",
+    "note": "",
+    "start": 1315.04,
+    "text": " eskaliert, dass man die Kosten \u00fcberw\u00e4lzt.",
+    "verdict": "real"
+  }
+]

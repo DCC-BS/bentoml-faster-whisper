@@ -1,4 +1,5 @@
-from typing import Annotated, Generator, Iterable, Literal
+from collections.abc import Generator, Iterable
+from typing import Annotated, Literal
 
 from bentoml.validators import ContentType
 from faster_whisper.transcribe import TranscriptionInfo
@@ -40,7 +41,7 @@ class ModelObject(BaseModel):
     object_: Literal["model"] = Field(serialization_alias="object")
     owned_by: str
     language: list[str] = Field(default_factory=list)
-    """List of ISO 639-3 supported by the model. It's possible that the list will be empty. This field is not a part of the OpenAI API spec and is added for convenience."""  # noqa: E501
+    """List of ISO 639-3 supported by the model. It's possible that the list will be empty. This field is not a part of the OpenAI API spec and is added for convenience."""
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -88,7 +89,7 @@ def segments_to_streaming_response(
     segments: Iterable[Segment],
     transcription_info: TranscriptionInfo,
     response_format: ResponseFormat,
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     """Stream one newline-delimited chunk per segment (NDJSON-style).
 
     Each chunk is the bare payload for the requested format followed by a
@@ -96,7 +97,7 @@ def segments_to_streaming_response(
     SSE (``data: ``) framing is applied; callers that need SSE must add it.
     """
 
-    def segment_responses() -> Generator[str, None, None]:
+    def segment_responses() -> Generator[str]:
         for i, segment in enumerate(segments):
             if response_format == ResponseFormat.TEXT:
                 data = segment.text

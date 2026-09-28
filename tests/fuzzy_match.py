@@ -5,9 +5,10 @@ start/end/speaker_id). Shared by the unit and integration quality tests."""
 import itertools
 import json
 import re
+from collections.abc import Iterable
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Iterable, NamedTuple
+from typing import NamedTuple
 
 
 class ReferenceWord(NamedTuple):

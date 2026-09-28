@@ -1,4 +1,5 @@
-from typing import Iterable, cast
+from collections.abc import Iterable
+from typing import cast
 
 # Distinct "nothing buffered" marker so a legitimately-yielded None is not mistaken
 # for an empty peek buffer (None is a valid stream item).
