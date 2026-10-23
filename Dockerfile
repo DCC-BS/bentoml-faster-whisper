@@ -1,7 +1,7 @@
 # Stage 1: Build
 FROM nvidia/cuda:13.3.1-runtime-ubuntu24.04 AS build
 
-COPY --from=ghcr.io/astral-sh/uv:0.9.13 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
