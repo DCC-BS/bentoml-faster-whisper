@@ -1,7 +1,7 @@
 import contextlib
 import dataclasses
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import av
@@ -48,7 +48,7 @@ _AUDIO_DECODE_ERRORS = (av.error.FFmpegError,)
 
 
 @contextlib.contextmanager
-def _audio_decode_errors_as_invalid() -> Iterator[None]:
+def _audio_decode_errors_as_invalid() -> Generator[None]:
     """Context manager mapping audio decoding failures to InvalidArgument (HTTP 400)."""
     try:
         yield
