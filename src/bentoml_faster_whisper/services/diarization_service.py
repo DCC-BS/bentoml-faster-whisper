@@ -3,7 +3,7 @@ import os
 import subprocess
 import tempfile
 import threading
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -91,7 +91,7 @@ def _is_16k_mono_wav(audio_path: str) -> bool:
 
 
 @contextlib.contextmanager
-def _as_wav(audio_path: str) -> Iterator[str]:
+def _as_wav(audio_path: str) -> Generator[str]:
     """Context manager converting audio to 16 kHz mono WAV if necessary."""
     if Path(audio_path).suffix.lower() == ".wav" and _is_16k_mono_wav(audio_path):
         yield audio_path
