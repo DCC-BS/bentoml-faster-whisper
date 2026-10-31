@@ -23,6 +23,13 @@ test-cov: ## Run the fast unit tests with coverage (writes coverage.xml + junit.
 	@echo "🚀 Testing code: Running pytest with coverage"
 	@uv run --env-file .env python -m pytest -m "not integration and not model and not performance" \
 		--cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml
+	@$(MAKE) --no-print-directory test-ui
+
+.PHONY: test-ui
+test-ui: ## Type-check the Gradio diagnosis UI (own uv project in tools/diagnose_ui) and test that it imports
+	@echo "🚀 Testing code: diagnosis UI"
+	@cd tools/diagnose_ui && uv run --env-file ../../.env python -m pytest -q
+	@cd tools/diagnose_ui && uv run ty check .
 
 .PHONY: test-model
 test-model: ## Run the unit tests that load a real Whisper model (slow, needs a GPU)
@@ -95,7 +102,7 @@ prod: ## Run the BentoML service in production-like mode (IS_PROD=true, JSON log
 .PHONY: diagnose-ui
 diagnose-ui: ## Launch the Gradio UI comparing raw pyannote turns to the full pipeline output
 	@echo "🚀 Launching the diagnosis UI"
-	@uv run --env-file .env python tools/diagnose_ui.py
+	@cd tools/diagnose_ui && uv run --env-file ../../.env python diagnose_ui.py
 
 .PHONY: help
 help:

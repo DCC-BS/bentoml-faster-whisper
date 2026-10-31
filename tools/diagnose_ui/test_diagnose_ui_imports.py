@@ -5,11 +5,7 @@ constructor signatures, so importing the module does not raise TypeError."""
 import importlib.util
 from pathlib import Path
 
-import pytest
-
-gr = pytest.importorskip("gradio")  # dev-only dependency
-
-_DIAGNOSE_UI = Path(__file__).resolve().parents[2] / "tools" / "diagnose_ui.py"
+_DIAGNOSE_UI = Path(__file__).resolve().parent / "diagnose_ui.py"
 
 
 def test_diagnose_ui_module_imports():

@@ -265,7 +265,7 @@ integration tests still run; only these two benchmark/eval targets are affected.
 
 ### Diagnosis UI
 
-`tools/diagnose_ui.py` is a [Gradio](https://www.gradio.app/) app for comparing pyannote's
+`tools/diagnose_ui/diagnose_ui.py` is a [Gradio](https://www.gradio.app/) app for comparing pyannote's
 raw speaker turns against the full pipeline's output on a single file — useful when
 diarization or the multi-language path misbehaves and you need to see whether the fault is
 in pyannote's turns or in how the pipeline merges/decodes them. Upload a file, optionally
@@ -280,7 +280,9 @@ independently-run pass.
 make diagnose-ui
 ```
 
-`gradio` is a dev-only dependency; the tool is not part of the served image.
+The tool is its own uv project (`tools/diagnose_ui/`, own `uv.lock`) and not part of the served
+image: gradio requires `pillow<13`, and keeping it out of the service's lock lets the service use
+the current pillow. `make test-ui` (also run by `make test-cov`) checks that it still imports.
 
 ## Deploy
 
