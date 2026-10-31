@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM nvidia/cuda:13.4.2-runtime-ubuntu24.04 AS build
+FROM nvidia/cuda:13.4.3-runtime-ubuntu24.04 AS build
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 
@@ -42,7 +42,7 @@ RUN ln -s libcublas.so.13 /app/.venv/lib/python3.13/site-packages/nvidia/cu13/li
     ln -s libcublasLt.so.13 /app/.venv/lib/python3.13/site-packages/nvidia/cu13/lib/libcublasLt.so.12
 
 # Stage 2: Runtime
-FROM nvidia/cuda:13.4.2-runtime-ubuntu24.04
+FROM nvidia/cuda:13.4.3-runtime-ubuntu24.04
 
 ENV TZ=Europe/Zurich
 ENV LANG=de_CH.UTF-8
