@@ -7,7 +7,7 @@ packages = ["src/bentoml_faster_whisper"]
 
 [project]
 name = "bentoml-faster-whisper"
-version = "2.0.3"
+version = "2.0.4"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "bentoml==1.4.39",
@@ -43,7 +43,6 @@ dev = [
     "pytest-cov>=6.0.0",
     "openai>=1.65.1",
     "ruff>=0.15.18",
-    "gradio>=6.20.0",
     "requests~=2.34.2",
 ]
 
@@ -101,6 +100,10 @@ exclude_lines = [
     "raise NotImplementedError",
     "@(abc\\.)?abstractmethod",
 ]
+
+[tool.ty.src]
+# Own uv project with gradio (see tools/diagnose_ui/pyproject.toml); `make test-ui` type-checks it there.
+exclude = ["tools/diagnose_ui"]
 
 [tool.ruff]
 target-version = "py313"

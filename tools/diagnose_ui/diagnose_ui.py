@@ -3,11 +3,11 @@ pipeline: upload an audio file and inspect pyannote's speaker turns side by side
 with the pipeline's final segments (language ID + transcription + speaker merge)
 and the pipeline's detected top-level language.
 
-Not part of the served image (gradio is a dev-only dependency, this script lives
-under tools/, and pytest.ini's testpaths=tests keeps it out of the test suite).
+Not part of the served image: this is its own uv project (tools/diagnose_ui) because
+gradio requires pillow<13, which would otherwise hold back the service's pillow.
 
 Run with:
-    uv run --env-file .env python tools/diagnose_ui.py
+    make diagnose-ui
 """
 
 import json
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 import gradio as gr
 
