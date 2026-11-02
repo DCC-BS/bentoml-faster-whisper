@@ -101,10 +101,6 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ]
 
-[tool.ty.src]
-# Own uv project with gradio (see tools/diagnose_ui/pyproject.toml); `make test-ui` type-checks it there.
-exclude = ["tools/diagnose_ui"]
-
 [tool.ruff]
 target-version = "py313"
 line-length = 120
