@@ -263,27 +263,6 @@ locally — see the private [DCC-BS/research](https://github.com/DCC-BS/research
 checkout of it (see `.env.example`). Without that setup, the fast unit suite, model tests and
 integration tests still run; only these two benchmark/eval targets are affected.
 
-### Diagnosis UI
-
-`tools/diagnose_ui/diagnose_ui.py` is a [Gradio](https://www.gradio.app/) app for comparing pyannote's
-raw speaker turns against the full pipeline's output on a single file — useful when
-diarization or the multi-language path misbehaves and you need to see whether the fault is
-in pyannote's turns or in how the pipeline merges/decodes them. Upload a file, optionally
-pin the language or the number of speakers (`diarization_speaker_count`, 1–6; leave empty to
-let pyannote estimate it — see the "Multi-language audio" and "Speaker diarization" sections
-above), and it shows the raw turns, the final segments (with per-segment language and
-speaker), and the pipeline's detected top-level language side by side. Diarization runs only
-once per click — the raw turns shown are exactly what fed the transcription, not a second,
-independently-run pass.
-
-```bash
-make diagnose-ui
-```
-
-The tool is its own uv project (`tools/diagnose_ui/`, own `uv.lock`) and not part of the served
-image: gradio requires `pillow<13`, and keeping it out of the service's lock lets the service use
-the current pillow. `make test-ui` (also run by `make test-cov`) checks that it still imports.
-
 ## Deploy
 
 ### Build an Image
