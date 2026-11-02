@@ -6,18 +6,20 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
-jobs:
-  # Job id must stay `backend-ci`: the branch ruleset requires the checks
-  # "backend-ci / Quality Checks" and "backend-ci / Tests & Type Checks".
-  backend-ci:
-    uses: DCC-BS/ci-workflows/.github/workflows/python-backend-ci.yml@v9
-    with:
-      python_versions: '["3.13"]'
-      quality_python_version: "3.13"
-      uv_version: "0.11.21"
-      check_command: "make check"
+permissions:
+  contents: read
 
-  # Not the reusable workflow: it has no Codecov upload step. ffmpeg and a populated
+jobs:
+  backend-ci:
+    uses: DCC-BS/ci-workflows/.github/workflows/ci.yml@a7a5611d4ea9bc55f27ca8bc22327181d0e0cbc0 # v10.0.0
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      # `mise run test:unit` runs in the tests job below: it needs ffmpeg and uploads coverage to Codecov.
+      test-command: "echo 'Unit tests run in the tests job'"
+
+  # Separate from ci.yml: it has no Codecov upload step. ffmpeg and a populated
   # .env are runner prerequisites of the fast suite.
   tests:
     name: Tests & Coverage (Python ${{ matrix.python-version }})
@@ -32,17 +34,14 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up the environment
-        uses: DCC-BS/ci-workflows/actions/setup-python-env@v9
-        with:
-          python-version: ${{ matrix.python-version }}
-          uv-version: "0.11.21"
+      - name: Setup mise
+        uses: DCC-BS/ci-workflows/actions/setup-mise@a7a5611d4ea9bc55f27ca8bc22327181d0e0cbc0 # v10.0.0
 
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Run unit tests with coverage
-        run: cp .env.example .env && make test-cov
+        run: mise run test:unit
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
