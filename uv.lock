@@ -202,7 +202,7 @@ wheels = [
 
 [[package]]
 name = "bentoml"
-version = "1.4.39"
+version = "1.4.40"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2wsgi" },
@@ -211,6 +211,7 @@ dependencies = [
     { name = "aiosqlite" },
     { name = "attrs" },
     { name = "cattrs" },
+    { name = "certifi" },
     { name = "click" },
     { name = "click-option-group" },
     { name = "cloudpickle" },
@@ -247,9 +248,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/54/7ee2d823b653ce048dd1280dbf122485509b982f155133ae77d9f3ea53fc/bentoml-1.4.39.tar.gz", hash = "sha256:e92381702fc13ac926fd41c48fee6721f5c50f6f9bbed6c8cfc3b9346b6b0d41", size = 988807, upload-time = "2026-05-07T10:38:15.533Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/79/755d94838da1750a62144d9f0fd9322459c9472cdf15f11990b8288d03f1/bentoml-1.4.40.tar.gz", hash = "sha256:e46c06da1577b669d178541873b5938ac772e3882339b942e138a0c8fb245abc", size = 991458, upload-time = "2026-10-23T19:52:23.477Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/28/0716a70ebc31954cebc10dcd2c04abf48532c592396829605cc15400b041/bentoml-1.4.39-py3-none-any.whl", hash = "sha256:5243c7725ec59a88e6121380bac54f1ac70916d5b15eaa1665d09ce0969f637b", size = 1175310, upload-time = "2026-05-07T10:38:13.384Z" },
+    { url = "https://files.pythonhosted.org/packages/35/a6/65c943b7f4fca417e9e7f4a8fba95db9f47926a32d20dcb3ece742e9811b/bentoml-1.4.40-py3-none-any.whl", hash = "sha256:ba98c57c60f4ac0879cb8b0ae280ed42f96a26cccd0f83edcb8339d0634d9678", size = 1177988, upload-time = "2026-10-23T19:52:21.35Z" },
 ]
 
 [[package]]
@@ -292,7 +293,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bentoml", specifier = "==1.4.39" },
+    { name = "bentoml", specifier = "==1.4.40" },
     { name = "ctranslate2", specifier = "~=4.8.0" },
     { name = "dcc-backend-common", specifier = ">=0.1.4" },
     { name = "dependency-injector", specifier = ">=4.48.3" },
