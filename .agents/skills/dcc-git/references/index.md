@@ -249,7 +249,7 @@ jobs:
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/documentation') &&
       (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER')
-    uses: DCC-BS/ci-workflows/.github/workflows/llm-doc-update-conditional.yml@a7a5611d4ea9bc55f27ca8bc22327181d0e0cbc0 # v10.0.0
+    uses: DCC-BS/ci-workflows/.github/workflows/llm-doc-update-conditional.yml@8b031be53aee5210c6b392115bd941c80e798d60 # v10.0.1
     with:
       doc_repo: "DCC-BS/documentation"
       doc_path: "markdown"
