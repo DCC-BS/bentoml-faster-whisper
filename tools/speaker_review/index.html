@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speaker Review</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #deded8; --focus: #2f6fdf;
+  --s0: #2f6fdf; --s1: #d9480f; --s2: #2b8a3e; --s3: #9c36b5; --s4: #b08800;
+  --other: #495057; --overlap: #c2255c; --unsure: #868e96;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161615; --panel: #20201e; --text: #ecece8; --muted: #a0a09a; --line: #3a3a36; --focus: #6ea0ff;
+    --s0: #6ea0ff; --s1: #ff8a4c; --s2: #63c174; --s3: #d17ee6; --s4: #e0c040;
+    --other: #adb5bd; --overlap: #f06595; --unsure: #868e96; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+header { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+main { max-width: 980px; margin: 0 auto; padding: 16px; }
+select, button, input { font: inherit; color: inherit; }
+button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover { border-color: var(--focus); }
+button.active { outline: 2px solid var(--focus); outline-offset: 1px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.brush { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.meta { color: var(--muted); font-size: 13px; }
+.words { display: flex; flex-wrap: wrap; gap: 4px 2px; margin-top: 12px; user-select: none; }
+.word { padding: 2px 5px; border-radius: 5px; border-bottom: 3px solid transparent; cursor: pointer; position: relative; }
+.word.playing { background: color-mix(in srgb, var(--focus) 18%, transparent); }
+.word .hint { display: none; position: absolute; left: 2px; right: 2px; top: calc(100% + 3px); flex-direction: column; gap: 2px; }
+.word .hint i { display: block; height: 4px; border-radius: 2px; }
+.show-hints .word { margin-bottom: 22px; }
+.show-hints .word .hint { display: flex; }
+.hint-legend { display: none; }
+.show-hints .hint-legend { display: block; }
+.status { display: inline-block; min-width: 54px; }
+.done { color: var(--s2); font-weight: 600; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+audio { width: 100%; margin-top: 8px; }
+.progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; flex: 1; min-width: 120px; }
+.progress > div { height: 100%; background: var(--s2); }
+textarea { width: 100%; min-height: 40px; margin-top: 10px; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+.help { color: var(--muted); font-size: 13px; }
+.help span { margin-right: 14px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <select id="file"></select>
+  <span class="meta" id="count"></span>
+  <div class="progress"><div id="bar"></div></div>
+  <button id="export">Export JSON</button>
+  <label class="meta"><input type="file" id="import" accept=".json" hidden><button id="importBtn">Import</button></label>
+</header>
+<main>
+  <div class="panel">
+    <div class="legend" id="legend"></div>
+    <p class="help">
+      <span><b>1–5</b> choose speaker</span><span><b>x</b> other</span><span><b>o</b> overlap</span><span><b>u</b> unsure</span>
+      <span><b>click</b> paint word</span><span><b>shift+click</b> paint range</span><span><b>a</b> paint all</span>
+      <span><b>alt+click</b> play from word</span><span><b>space</b> play/pause</span><span><b>r</b> replay</span>
+      <span><b>s</b> 0.75× speed</span><span><b>h</b> hints</span><span><b>enter</b> done + next</span><span><b>←/→</b> prev/next</span>
+    </p>
+  </div>
+  <div class="panel" id="clip"></div>
+</main>
+<script src="data.js"></script>
+<script>
+const DATA = window.REVIEW;
+if (!DATA) document.body.innerHTML = "<main><p>data.js not found next to index.html. Run tools/speaker_review/build_review.py and open the generated index.html in a browser.</p></main>";
+const SPECIAL = [
+  { label: "OTHER", name: "Other speaker", key: "x", color: "var(--other)" },
+  { label: "OVERLAP", name: "Overlap", key: "o", color: "var(--overlap)" },
+  { label: "UNSURE", name: "Unsure", key: "u", color: "var(--unsure)" },
+];
+let fileIndex = 0, clipIndex = 0, brush = null, lastClicked = null, showHints = false, slow = false;
+const state = {};
+
+function store(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
+function load(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } }
+const file = () => DATA.files[fileIndex];
+const storeKey = () => `speaker-review:${DATA.build}:${file().audio}`;
+function fileState() {
+  const audio = file().audio;
+  if (!state[audio]) state[audio] = load(storeKey()) || { clips: {} };
+  return state[audio];
+}
+function clipState(clip) {
+  const s = fileState();
+  if (!s.clips[clip.id]) s.clips[clip.id] = { labels: clip.words.map(w => w.spk), done: false, note: "" };
+  return s.clips[clip.id];
+}
+function save() { store(storeKey(), fileState()); }
+
+function brushes() {
+  const speakers = file().speakers.map((s, i) => ({ label: s.label, name: String.fromCharCode(65 + i), key: String(i + 1), color: `var(--s${i % 5})`, refs: s.refs, minutes: s.minutes }));
+  return [...speakers, ...SPECIAL];
+}
+const colorOf = label => (brushes().find(b => b.label === label) || { color: "var(--unsure)" }).color;
+const nameOf = label => (brushes().find(b => b.label === label) || { name: label }).name;
+
+function fmt(t) { const m = Math.floor(t / 60), s = (t % 60).toFixed(1).padStart(4, "0"); return `${m}:${s}`; }
+
+const refAudio = new Audio();
+function renderLegend() {
+  const legend = document.getElementById("legend");
+  legend.innerHTML = "";
+  if (!brush || !brushes().some(b => b.label === brush)) brush = brushes()[0].label;
+  for (const b of brushes()) {
+    const el = document.createElement("span");
+    el.className = "brush";
+    const btn = document.createElement("button");
+    btn.className = b.label === brush ? "active" : "";
+    btn.innerHTML = `<span class="swatch" style="background:${b.color}"></span> ${b.name} <span class="kbd">${b.key}</span>`;
+    btn.title = b.minutes ? `${b.label}, ~${b.minutes} min` : b.name;
+    btn.onclick = () => { brush = b.label; renderLegend(); };
+    el.appendChild(btn);
+    (b.refs || []).forEach((ref, k) => {
+      const play = document.createElement("button");
+      play.textContent = `▶ ref ${k + 1}`;
+      play.onclick = () => { refAudio.src = ref; refAudio.play(); };
+      el.appendChild(play);
+    });
+    legend.appendChild(el);
+  }
+}
+
+function renderHeader() {
+  const sel = document.getElementById("file");
+  sel.innerHTML = DATA.files.map((f, i) => `<option value="${i}" ${i === fileIndex ? "selected" : ""}>${f.audio}</option>`).join("");
+  const clips = file().clips, s = fileState();
+  const done = clips.filter(c => s.clips[c.id] && s.clips[c.id].done).length;
+  document.getElementById("count").textContent = `${done}/${clips.length} reviewed`;
+  document.getElementById("bar").style.width = `${(100 * done) / clips.length}%`;
+}
+
+let player = null;
+function renderClip() {
+  const clip = file().clips[clipIndex], cs = clipState(clip);
+  const root = document.getElementById("clip");
+  root.className = "panel" + (showHints ? " show-hints" : "");
+  root.innerHTML = `
+    <div class="meta">Clip ${clipIndex + 1}/${file().clips.length} · ${fmt(clip.start)}–${fmt(clip.end)}
+      · <span class="status ${cs.done ? "done" : ""}">${cs.done ? "✓ done" : "open"}</span></div>
+    <audio controls preload="auto" src="${clip.src}"></audio>
+    <div class="meta hint-legend">Hint bars under each word, top to bottom: ${[...file().systems, "pipeline (original)"].join(", ")}; dashed = no speech</div>
+    <div class="words"></div>
+    <textarea placeholder="Note (optional)"></textarea>
+    <div class="nav">
+      <button data-act="prev">← Prev</button><button data-act="done">✓ Done + next</button><button data-act="next">Next →</button>
+      <button data-act="reset">Reset to pipeline labels</button><button data-act="firstopen">First open clip</button>
+    </div>`;
+  player = root.querySelector("audio");
+  player.playbackRate = slow ? 0.75 : 1;
+  const words = root.querySelector(".words");
+  clip.words.forEach((w, i) => {
+    const el = document.createElement("span");
+    el.className = "word";
+    el.dataset.i = i;
+    el.textContent = w.w;
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    for (const [system, label] of [...Object.entries(w.hints || {}), ["pipeline", w.spk]]) {
+      const bar = document.createElement("i");
+      bar.style.background = label ? colorOf(label) : "transparent";
+      bar.style.border = label ? "0" : "1px dashed var(--line)";
+      bar.title = `${system}: ${label ? nameOf(label) : "no speech"}`;
+      hint.appendChild(bar);
+    }
+    el.appendChild(hint);
+    el.onclick = ev => {
+      if (ev.altKey) { player.currentTime = Math.max(0, w.s - clip.start - 0.15); player.play(); return; }
+      const from = ev.shiftKey && lastClicked !== null ? Math.min(lastClicked, i) : i;
+      const to = ev.shiftKey && lastClicked !== null ? Math.max(lastClicked, i) : i;
+      for (let k = from; k <= to; k++) cs.labels[k] = brush;
+      lastClicked = i;
+      save(); paintWords();
+    };
+    words.appendChild(el);
+  });
+  paintWords();
+  const note = root.querySelector("textarea");
+  note.value = cs.note || "";
+  note.oninput = () => { cs.note = note.value; save(); };
+  root.querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act));
+  player.ontimeupdate = () => {
+    const t = clip.start + player.currentTime;
+    words.querySelectorAll(".word").forEach(el => {
+      const w = clip.words[+el.dataset.i];
+      el.classList.toggle("playing", t >= w.s && t < w.e);
+    });
+  };
+  renderHeader();
+}
+
+function paintWords() {
+  const clip = file().clips[clipIndex], cs = clipState(clip);
+  document.querySelectorAll("#clip .word").forEach(el => {
+    const i = +el.dataset.i, w = clip.words[i];
+    el.style.borderBottomColor = colorOf(cs.labels[i]);
+    el.style.color = colorOf(cs.labels[i]);
+    el.title = `${fmt(w.s)}–${fmt(w.e)} · ${nameOf(cs.labels[i])}`;
+  });
+}
+
+function act(what) {
+  const clips = file().clips, clip = clips[clipIndex], cs = clipState(clip);
+  if (what === "done") { cs.done = true; save(); what = "next"; }
+  if (what === "next" && clipIndex < clips.length - 1) clipIndex++;
+  if (what === "prev" && clipIndex > 0) clipIndex--;
+  if (what === "reset") { cs.labels = clip.words.map(w => w.spk); cs.done = false; save(); }
+  if (what === "firstopen") { const k = clips.findIndex(c => !clipState(c).done); if (k >= 0) clipIndex = k; }
+  lastClicked = null;
+  renderClip();
+  if (what === "next" || what === "prev" || what === "firstopen") player.play().catch(() => {});
+}
+
+function exportJson() {
+  const f = file(), s = fileState(), reviewed = [], spans = [];
+  for (const clip of f.clips) {
+    const cs = s.clips[clip.id];
+    if (!cs || !cs.done) continue;
+    reviewed.push({ clip: clip.id, origin: clip.origin, start: clip.start, end: clip.end, note: cs.note || undefined });
+    let run = null;
+    clip.words.forEach((w, i) => {
+      const label = cs.labels[i];
+      if (run && run.speaker === label) { run.end = w.e; run.text += " " + w.w; return; }
+      if (run) spans.push(run);
+      run = { start: w.s, end: w.e, speaker: label, clip: clip.id, origin: clip.origin, text: w.w };
+    });
+    if (run) spans.push(run);
+  }
+  const out = {
+    audio: f.audio,
+    source: "tools/speaker_review editor; labels are pyannote speaker labels of <audio>_turns.json",
+    exported_at: new Date().toISOString(),
+    build: DATA.build,
+    speakers: f.speakers.map(sp => sp.label),
+    reviewed, spans,
+  };
+  const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = f.audio.replace(/\./g, "_") + "_speaker_annotations.json";
+  a.click();
+}
+
+function importJson(text) {
+  const data = JSON.parse(text);
+  const idx = DATA.files.findIndex(f => f.audio === data.audio);
+  if (idx < 0) { alert("No clips for " + data.audio); return; }
+  fileIndex = idx;
+  const f = file();
+  let skipped = 0;
+  for (const clip of f.clips) {
+    const entry = data.reviewed.find(r => r.clip === clip.id);
+    if (!entry) continue;
+    if (Math.abs(entry.start - clip.start) > 0.01 || Math.abs(entry.end - clip.end) > 0.01) { skipped++; continue; }
+    const spans = data.spans.filter(sp => sp.clip === clip.id);
+    const covering = clip.words.map(w => spans.find(sp => w.s >= sp.start - 1e-6 && w.e <= sp.end + 1e-6));
+    const cs = clipState(clip);
+    cs.labels = clip.words.map((w, i) => (covering[i] || { speaker: w.spk }).speaker);
+    cs.done = covering.every(Boolean);
+    cs.note = entry.note || "";
+  }
+  if (skipped) alert(`${skipped} reviewed clip(s) belong to a different build (other time window) and were not imported.`);
+  save(); clipIndex = 0; renderLegend(); renderClip();
+}
+
+document.getElementById("file").onchange = e => { fileIndex = +e.target.value; clipIndex = 0; brush = null; renderLegend(); act("firstopen"); };
+document.getElementById("export").onclick = exportJson;
+document.getElementById("importBtn").onclick = () => document.getElementById("import").click();
+document.getElementById("import").onchange = e => { const r = new FileReader(); r.onload = () => importJson(r.result); r.readAsText(e.target.files[0]); };
+document.addEventListener("keydown", e => {
+  const tag = e.target.tagName;
+  if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT" || e.target.isContentEditable) return;
+  if ((tag === "BUTTON" || tag === "AUDIO") && (e.key === " " || e.key === "Enter")) return;
+  const b = brushes().find(b => b.key === e.key);
+  if (b) { brush = b.label; renderLegend(); return; }
+  if (e.key === " ") { e.preventDefault(); player.paused ? player.play() : player.pause(); }
+  else if (e.key === "r") { player.currentTime = 0; player.play(); }
+  else if (e.key === "s") { slow = !slow; player.playbackRate = slow ? 0.75 : 1; }
+  else if (e.key === "h") { showHints = !showHints; document.getElementById("clip").classList.toggle("show-hints", showHints); }
+  else if (e.key === "a") { const cs = clipState(file().clips[clipIndex]); cs.labels = cs.labels.map(() => brush); save(); paintWords(); }
+  else if (e.key === "Enter") { e.preventDefault(); act("done"); }
+  else if (e.key === "ArrowRight") act("next");
+  else if (e.key === "ArrowLeft") act("prev");
+});
+renderLegend();
+act("firstopen");
+</script>
+</body>
+</html>

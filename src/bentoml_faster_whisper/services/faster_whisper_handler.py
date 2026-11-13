@@ -40,6 +40,7 @@ from bentoml_faster_whisper.utils.speech_regions import (
     turns_to_language_runs,
 )
 from bentoml_faster_whisper.utils.transcription_cleaner import clean_transcription_segments
+from bentoml_faster_whisper.utils.voice_relabel import relabel_segments, speaker_profiles
 from bentoml_faster_whisper.utils.whisper_diarization_merger import merge_whisper_diarization
 
 logger = get_logger(__name__)
@@ -257,6 +258,8 @@ class FasterWhisperHandler:
 
             if dia_segments:
                 segments = merge_whisper_diarization(segments, dia_segments)
+                if request.diarization_voice_relabel and decoded is not None:
+                    segments = self._relabel_by_voice(segments, dia_segments, decoded)
 
             if "word" not in request.timestamp_granularities:
                 segments = _strip_words(segments)
@@ -276,6 +279,22 @@ class FasterWhisperHandler:
                 metrics.observe_realtime_factor(t0, transcription_info.duration)
 
         return _held_segments(), transcription_info
+
+    def _relabel_by_voice(
+        self,
+        segments: Iterable[Segment],
+        dia_segments: list[DiarizationSegment],
+        decoded: np.ndarray,
+    ) -> Iterable[Segment]:
+        try:
+            embed = self.diarization.voice_embedder(decoded, WHISPER_SAMPLE_RATE)
+            if embed is None:
+                return segments
+            profiles = speaker_profiles(dia_segments, embed)
+        except Exception:
+            logger.warning("Voice relabelling unavailable; keeping diarization labels", exc_info=True)
+            return segments
+        return relabel_segments(segments, profiles, embed)
 
     @staticmethod
     def _decode_options(request: DecodeParams, word_timestamps: bool) -> dict:

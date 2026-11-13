@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import av
+import numpy as np
 import pyannote.audio as _pyannote_audio
 import torch
 from bentoml.exceptions import InvalidArgument
@@ -153,6 +154,22 @@ class DiarizationService:
                 pipeline.to(torch.device("cuda"))
 
             self.pipeline = pipeline
+
+    def voice_embedder(self, audio: np.ndarray, sample_rate: int) -> Callable[[float, float], np.ndarray] | None:
+        """Embed ``audio[start:end]`` (seconds) with the diarization pipeline's speaker model."""
+        if self.pipeline is None:
+            self.load()
+        model = getattr(self.pipeline, "_embedding", None)
+        if model is None:
+            logger.warning("diarization pipeline exposes no embedding model; voice relabelling skipped")
+            return None
+
+        def embed(start: float, end: float) -> np.ndarray:
+            chunk = torch.from_numpy(np.ascontiguousarray(audio[int(start * sample_rate) : int(end * sample_rate)]))
+            with torch.inference_mode():
+                return np.asarray(model(chunk[None, None]))[0]
+
+        return embed
 
     @log_exceptions
     def diarize(

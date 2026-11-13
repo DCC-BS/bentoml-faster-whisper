@@ -107,6 +107,13 @@ class TranscriptionRequest(DecodeParams):
         default=None,
         description="The number of speakers to separate in the audio. This argument is only used if diarization is True.",
     )
+    diarization_voice_relabel: bool = Field(
+        default=faster_whisper_config.diarization_voice_relabel,
+        description="If True (default), every segment of at least 0.6s is compared against voice profiles "
+        "built from this recording's own speakers and moved to another speaker when that voice clearly "
+        "matches better. Fixes sentences pyannote attributes to the previous speaker at fast turn changes. "
+        "Only used if diarization is True.",
+    )
     progress_id: str | None = Field(
         default=None,
         description="A unique identifier for reporting the progress of a task.",
