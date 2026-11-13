@@ -157,7 +157,8 @@ class DiarizationService:
 
     def voice_embedder(self, audio: np.ndarray, sample_rate: int) -> Callable[[float, float], np.ndarray] | None:
         """Embed ``audio[start:end]`` (seconds) with the diarization pipeline's speaker model."""
-        self.load()
+        if self.pipeline is None:
+            self.load()
         model = getattr(self.pipeline, "_embedding", None)
         if model is None:
             logger.warning("diarization pipeline exposes no embedding model; voice relabelling skipped")

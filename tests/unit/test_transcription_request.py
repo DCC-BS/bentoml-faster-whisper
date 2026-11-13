@@ -27,9 +27,14 @@ def test_request_accepts_invalid_language_and_auto_detects():
     assert request.language is None
 
 
-def test_voice_relabel_is_on_by_default():
+def test_voice_relabel_is_on_by_default(monkeypatch):
+    from bentoml_faster_whisper.config import FasterWhisperConfig
+
+    monkeypatch.delenv("DIARIZATION_VOICE_RELABEL", raising=False)
+    assert FasterWhisperConfig().diarization_voice_relabel is True
+
     request = TranscriptionRequest.from_dict({"file": "/tmp/example.mp3"})
-    assert request.diarization_voice_relabel is True
+    assert request.diarization_voice_relabel is faster_whisper_config.diarization_voice_relabel
 
 
 def test_voice_relabel_can_be_switched_off_per_request():

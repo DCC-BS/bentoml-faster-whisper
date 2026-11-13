@@ -6,6 +6,8 @@ timestamps) and the turns of every diarization system found next to the audio
 ``<audio>_turns_<system>.json``). Other systems' labels are mapped onto pyannote's
 by maximum overlap. Clips are cut where systems disagree with our word labels, plus
 random speaker changes and random speech windows for an unbiased error estimate.
+Random windows may overlap the targeted ones (so a word can be labelled twice), because
+excluding the targeted regions would bias the random sample towards easy speech.
 
 Output: ``<out>/data.js`` + ``<out>/clips/*.mp3`` + ``index.html``; open index.html
 in a browser and export ``<audio>_speaker_annotations.json`` from there.
@@ -108,7 +110,7 @@ def cut(src: Path, start: float, end: float, dst: Path) -> None:
     )
 
 
-def build_file(audio: str, segments_dir: Path, out: Path, counts: dict[str, int], rng: random.Random) -> dict:
+def build_file(audio: str, segments_dir: Path, out: Path, counts: dict[str, int], rng: random.Random) -> dict | None:
     src = INTERNAL / audio
     reference = load_turns(INTERNAL / f"{stem(audio)}_turns.json")
     systems = {
@@ -127,6 +129,10 @@ def build_file(audio: str, segments_dir: Path, out: Path, counts: dict[str, int]
         for w in seg["words"] or []
         if w["end"] > w["start"]
     ]
+    if not words:
+        print(f"{audio}: no timestamped words, skipped")
+        return None
+
     for word in words:
         word["hints"] = {name: label_at(turns, word["s"], word["e"]) for name, turns in mapped.items()}
         word["score"] = sum(1 for h in word["hints"].values() if h is not None and h != word["spk"])
@@ -143,12 +149,13 @@ def build_file(audio: str, segments_dir: Path, out: Path, counts: dict[str, int]
 
     windows: list[tuple[float, float, str]] = []
 
-    def free(start: float, end: float) -> bool:
-        return all(end <= a or start >= b for a, b, _ in windows)
+    def free(start: float, end: float, origin: str) -> bool:
+        is_random = origin.startswith("random")
+        return all(end <= a or start >= b for a, b, o in windows if not is_random or o.startswith("random"))
 
     def add(start: float, end: float, origin: str) -> bool:
         start, end = max(0.0, start), min(end, start + MAX_CLIP_S)
-        if not free(start, end):
+        if not free(start, end, origin):
             return False
         windows.append((start, end, origin))
         return True
@@ -244,7 +251,9 @@ def main() -> None:
     (args.out / "clips").mkdir(parents=True, exist_ok=True)
     counts = {"disagreement": args.disagreement, "random_change": args.random_change, "random_any": args.random_any}
     rng = random.Random(args.seed)
-    files = [build_file(audio, args.segments_dir, args.out, counts, rng) for audio in args.audio]
+    files = [f for audio in args.audio if (f := build_file(audio, args.segments_dir, args.out, counts, rng))]
+    if not files:
+        raise SystemExit("no recording has timestamped words; nothing to review")
     (args.out / "data.js").write_text(
         "window.REVIEW = "
         + json.dumps({"build": datetime.now().strftime("%Y%m%dT%H%M%S"), "files": files}, ensure_ascii=False)

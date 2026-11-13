@@ -163,9 +163,6 @@ function renderClip() {
     el.className = "word";
     el.dataset.i = i;
     el.textContent = w.w;
-    el.style.borderBottomColor = colorOf(cs.labels[i]);
-    el.style.color = colorOf(cs.labels[i]);
-    el.title = `${fmt(w.s)}–${fmt(w.e)} · ${nameOf(cs.labels[i])}`;
     const hint = document.createElement("span");
     hint.className = "hint";
     for (const [system, label] of [...Object.entries(w.hints || {}), ["pipeline", w.spk]]) {
@@ -182,10 +179,11 @@ function renderClip() {
       const to = ev.shiftKey && lastClicked !== null ? Math.max(lastClicked, i) : i;
       for (let k = from; k <= to; k++) cs.labels[k] = brush;
       lastClicked = i;
-      save(); renderClip();
+      save(); paintWords();
     };
     words.appendChild(el);
   });
+  paintWords();
   const note = root.querySelector("textarea");
   note.value = cs.note || "";
   note.oninput = () => { cs.note = note.value; save(); };
@@ -198,6 +196,16 @@ function renderClip() {
     });
   };
   renderHeader();
+}
+
+function paintWords() {
+  const clip = file().clips[clipIndex], cs = clipState(clip);
+  document.querySelectorAll("#clip .word").forEach(el => {
+    const i = +el.dataset.i, w = clip.words[i];
+    el.style.borderBottomColor = colorOf(cs.labels[i]);
+    el.style.color = colorOf(cs.labels[i]);
+    el.title = `${fmt(w.s)}–${fmt(w.e)} · ${nameOf(cs.labels[i])}`;
+  });
 }
 
 function act(what) {
@@ -231,6 +239,7 @@ function exportJson() {
     audio: f.audio,
     source: "tools/speaker_review editor; labels are pyannote speaker labels of <audio>_turns.json",
     exported_at: new Date().toISOString(),
+    build: DATA.build,
     speakers: f.speakers.map(sp => sp.label),
     reviewed, spans,
   };
@@ -246,15 +255,20 @@ function importJson(text) {
   const idx = DATA.files.findIndex(f => f.audio === data.audio);
   if (idx < 0) { alert("No clips for " + data.audio); return; }
   fileIndex = idx;
-  const f = file(), s = fileState();
+  const f = file();
+  let skipped = 0;
   for (const clip of f.clips) {
+    const entry = data.reviewed.find(r => r.clip === clip.id);
+    if (!entry) continue;
+    if (Math.abs(entry.start - clip.start) > 0.01 || Math.abs(entry.end - clip.end) > 0.01) { skipped++; continue; }
     const spans = data.spans.filter(sp => sp.clip === clip.id);
-    if (!data.reviewed.some(r => r.clip === clip.id)) continue;
+    const covering = clip.words.map(w => spans.find(sp => w.s >= sp.start - 1e-6 && w.e <= sp.end + 1e-6));
     const cs = clipState(clip);
-    cs.labels = clip.words.map(w => (spans.find(sp => w.s >= sp.start - 1e-6 && w.e <= sp.end + 1e-6) || { speaker: w.spk }).speaker);
-    cs.done = true;
-    cs.note = (data.reviewed.find(r => r.clip === clip.id) || {}).note || "";
+    cs.labels = clip.words.map((w, i) => (covering[i] || { speaker: w.spk }).speaker);
+    cs.done = covering.every(Boolean);
+    cs.note = entry.note || "";
   }
+  if (skipped) alert(`${skipped} reviewed clip(s) belong to a different build (other time window) and were not imported.`);
   save(); clipIndex = 0; renderLegend(); renderClip();
 }
 
@@ -263,14 +277,16 @@ document.getElementById("export").onclick = exportJson;
 document.getElementById("importBtn").onclick = () => document.getElementById("import").click();
 document.getElementById("import").onchange = e => { const r = new FileReader(); r.onload = () => importJson(r.result); r.readAsText(e.target.files[0]); };
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "TEXTAREA") return;
+  const tag = e.target.tagName;
+  if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT" || e.target.isContentEditable) return;
+  if ((tag === "BUTTON" || tag === "AUDIO") && (e.key === " " || e.key === "Enter")) return;
   const b = brushes().find(b => b.key === e.key);
   if (b) { brush = b.label; renderLegend(); return; }
   if (e.key === " ") { e.preventDefault(); player.paused ? player.play() : player.pause(); }
   else if (e.key === "r") { player.currentTime = 0; player.play(); }
   else if (e.key === "s") { slow = !slow; player.playbackRate = slow ? 0.75 : 1; }
-  else if (e.key === "h") { showHints = !showHints; renderClip(); }
-  else if (e.key === "a") { const cs = clipState(file().clips[clipIndex]); cs.labels = cs.labels.map(() => brush); save(); renderClip(); }
+  else if (e.key === "h") { showHints = !showHints; document.getElementById("clip").classList.toggle("show-hints", showHints); }
+  else if (e.key === "a") { const cs = clipState(file().clips[clipIndex]); cs.labels = cs.labels.map(() => brush); save(); paintWords(); }
   else if (e.key === "Enter") { e.preventDefault(); act("done"); }
   else if (e.key === "ArrowRight") act("next");
   else if (e.key === "ArrowLeft") act("prev");

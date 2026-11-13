@@ -126,3 +126,20 @@ def test_non_finite_embedding_keeps_label():
     )
 
     assert segment.speaker == "SPEAKER_00"
+
+
+def test_embedding_failure_on_one_segment_keeps_its_label_and_continues():
+    embed_profiles = _voice_track((0.0, 10.0, VOICE_A), (10.0, 20.0, VOICE_B))
+    profiles = speaker_profiles(TURNS, embed_profiles)
+    track = _voice_track((20.0, 30.0, VOICE_B))
+
+    def flaky(start: float, end: float) -> np.ndarray:
+        if start < 21.0:
+            raise RuntimeError("CUDA error")
+        return track(start, end)
+
+    segments = list(
+        relabel_segments([_segment(20.0, 20.9, "SPEAKER_00"), _segment(22.0, 24.0, "SPEAKER_00")], profiles, flaky)
+    )
+
+    assert [segment.speaker for segment in segments] == ["SPEAKER_00", "SPEAKER_01"]

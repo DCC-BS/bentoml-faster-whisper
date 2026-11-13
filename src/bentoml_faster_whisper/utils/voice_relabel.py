@@ -75,11 +75,17 @@ def relabel_segments(
         yield from segments
         return
 
-    relabelled = 0
+    relabelled = failed = 0
     for segment in segments:
         current = segment.speaker
         if current in profiles and segment.end - segment.start >= MIN_SEGMENT_S:
-            voice = _unit(embed(segment.start, segment.end))
+            try:
+                voice = _unit(embed(segment.start, segment.end))
+            except Exception:
+                if not failed:
+                    logger.warning("Segment voice embedding failed; keeping its diarization label", exc_info=True)
+                failed += 1
+                voice = None
             if voice is not None:
                 similarity = {speaker: float(voice @ profile) for speaker, profile in profiles.items()}
                 best = max(similarity, key=similarity.__getitem__)
@@ -90,4 +96,6 @@ def relabel_segments(
                     relabelled += 1
         yield segment
 
-    logger.debug("Voice relabelling finished", relabelled_segments=relabelled, speakers=len(profiles))
+    logger.debug(
+        "Voice relabelling finished", relabelled_segments=relabelled, failed_segments=failed, speakers=len(profiles)
+    )
