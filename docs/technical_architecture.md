@@ -74,6 +74,19 @@ This document captures the architectural decisions, performance optimizations, a
 ### Boundary Splitting
 - Segments are cut only at *confident* speaker changes, so a fast exchange decoded as one window keeps its alternation and segment-level speaker labels strictly match word-level labels. With no credible change, the segment stays whole and is labelled by word-duration majority (matching the pre-split behaviour).
 
+### Voice Relabelling (`utils/voice_relabel.py`, `diarization_voice_relabel`, `DIARIZATION_VOICE_RELABEL`)
+- **Problem**: pyannote community-1's local segmentation often misses fast turn changes between similar voices and keeps the previous speaker for up to a few seconds. Listening labels on three internal interviews (FM PO, 1,280 s of labelled speech) showed that 84% of wrongly attributed speech is a *whole* Whisper segment with a single true speaker. The word→turn merge and split accounted for about 8 s of 277 s, so merger thresholds are not the lever.
+- **Fix**: after the merge, each speaker gets a voice profile, the mean of the pyannote embeddings of their 25 longest crosstalk-free turns (≥4 s, trimmed 0.3 s) *in the same recording*. Every segment ≥0.6 s whose voice is closer to another profile by a cosine margin >0.05 moves to that speaker, with its words. Nothing is enrolled or stored across requests.
+- **Results** on the labelled clips: 74.9% → 93.8% of labelled speech correct overall, 94.6% → 97.7% on the randomly sampled clips. Parameters tuned on two files transfer to the third (+14 to +23 points). Restricting it to segments at speaker-block edges is clearly worse, because misattributed sentences also sit inside blocks.
+- **Cost**: about 5 s for 84 min of audio, one embedding per segment, against about 200 s for diarization plus decode. The embedder bypasses the diarization lock. A forward pass of the embedding model holds no pipeline state, so a request never waits for another request's diarization.
+- **Limits**:
+  - With fewer than two profiled speakers it is a no-op.
+  - It cannot separate two people that pyannote clustered into one label.
+  - It does not touch segments shorter than 0.6 s or segments without a speaker.
+- **Failure handling**: if the embedding model is unavailable, the diarization labels are kept and a warning is logged.
+- **Switches**: per request with `diarization_voice_relabel`, and the default comes from the `DIARIZATION_VOICE_RELABEL` env var.
+- **Regression test**: `tests/unit/test_speaker_attribution_annotations.py` scores against the listening labels (internal assets).
+
 ---
 
 ## 4. Multilingual Transcription & Language Identification

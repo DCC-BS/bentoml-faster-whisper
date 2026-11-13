@@ -144,6 +144,14 @@ exactly one speaker. Credible means: the words on both sides sit solidly inside 
 behavior of one segment labeled by word-duration majority. Speaker labels appear in the
 `json_diarized` and `verbose_json` response formats.
 
+**Voice relabelling (on by default).** At fast turn changes between similar voices, pyannote
+often keeps the previous speaker for a sentence or two. After the merge, every segment of at
+least 0.6s is compared against voice profiles built from the same recording's speakers (their
+longest turns without crosstalk) and moved to another speaker when that voice clearly matches
+better. Nothing is stored across requests. It adds a few seconds per hour of audio. Turn it off
+per request with `diarization_voice_relabel=false`, or change the default with the
+`DIARIZATION_VOICE_RELABEL` env var.
+
 ### Multi-language audio
 
 When diarization is enabled and no `language` is given, the service does not force one

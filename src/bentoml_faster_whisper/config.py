@@ -72,6 +72,9 @@ class FasterWhisperConfig(BaseModel):
         )
     )
     diarization: bool = True
+    diarization_voice_relabel: bool = Field(
+        default_factory=lambda: os.getenv("DIARIZATION_VOICE_RELABEL", "true").lower() not in ("false", "0", "no")
+    )
     condition_on_previous_text: bool = False
     repetition_penalty: float = 1.0
     length_penalty: float = 1.0
