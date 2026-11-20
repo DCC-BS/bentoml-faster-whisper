@@ -200,9 +200,7 @@ def drop_run_tail_hallucinations(
         remaining_s = run_duration_s - seek * _SEEK_FRAME_S
         if remaining_s < sliver_s or (remaining_s < anomaly_s and any(map(_is_segment_anomaly, window))):
             dropped.add(seek)
-            logger.debug(
-                "Dropped run-tail window", remaining_s=round(remaining_s, 2), text="".join(s.text for s in window)
-            )
+            logger.debug("Dropped run-tail window", remaining_s=round(remaining_s, 2), segments=len(window))
     return [seg for seg in segments if seg.seek not in dropped]
 
 

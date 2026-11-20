@@ -156,7 +156,7 @@ def configure_logging() -> None:
 
     # IS_PROD is required by dcc_init_logger() (get_env_or_throw); its default lives in
     # .env.schema (IS_PROD=false), loaded by varlock at runtime and by --env-file .env in tests.
-    dcc_init_logger()
+    dcc_init_logger(app_name="bentoml-faster-whisper")
 
     level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
     _configure_library_loggers(level)
