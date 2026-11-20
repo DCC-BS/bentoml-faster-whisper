@@ -29,10 +29,10 @@ def positive_env(name: str, default: _NumberT, cast: Callable[[str], _NumberT]) 
     try:
         value = cast(raw)
     except ValueError:
-        logger.warning("Invalid env var value; using default", name=name, raw=raw, default=default)
+        logger.warning("Invalid env var value; using default", name=name, raw=raw, default=str(default))
         return default
     if value <= 0:
-        logger.warning("Env var must be > 0; using default", name=name, value=value, default=default)
+        logger.warning("Env var must be > 0; using default", name=name, value=str(value), default=str(default))
         return default
     return value
 
