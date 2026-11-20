@@ -7,7 +7,7 @@ packages = ["src/bentoml_faster_whisper"]
 
 [project]
 name = "bentoml-faster-whisper"
-version = "2.1.0"
+version = "2.1.1"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "bentoml==1.4.40",
@@ -31,7 +31,7 @@ dependencies = [
     "huggingface-hub>=0.23",
     "numpy>=2.5.0",
     "structlog>=26.1.0",
-    "dcc-backend-common>=0.1.4",
+    "dcc-backend-common>=0.1.25",
     "dependency-injector>=4.48.3",
 ]
 [dependency-groups]
@@ -109,6 +109,8 @@ fix = true
 [tool.uv]
 # Supply-chain cooldown: uv only uses distributions uploaded at least 7 days ago.
 exclude-newer = "P7D"
+# dcc-backend-common: our own package(s), always current (permanent).
+exclude-newer-package = { dcc-backend-common = "P0D" }
 # faster-whisper 1.2.1 calls av.open(..., metadata_errors="ignore"); PyAV 19 removed that argument.
 # Drop this once faster-whisper supports av 19.
 constraint-dependencies = ["av<19"]
