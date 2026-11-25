@@ -24,7 +24,7 @@ dependencies = [
     # libcublas.so.12 -> .so.13, which is ABI-compatible for ctranslate2's use
     # (OpenNMT/CTranslate2#1933), so no separate CUDA-12 pip libs are needed.
     "pydantic>=2.12.2",
-    "ctranslate2~=4.8.0",
+    "ctranslate2~=4.9.0",
     "python-dotenv~=1.2.0",
     "uvicorn~=0.54.0",
     "pyannote-audio>=4.0",
